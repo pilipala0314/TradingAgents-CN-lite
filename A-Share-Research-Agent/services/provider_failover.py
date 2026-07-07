@@ -88,8 +88,8 @@ def _stats_to_dict(stat: Any) -> dict[str, Any]:
     if hasattr(stat, "to_dict") and callable(stat.to_dict):
         try:
             return stat.to_dict()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("[provider_failover] stats.to_dict 失败, fallback: %s", exc)
     return {
         "total": getattr(stat, "total", 0),
         "success": getattr(stat, "success", 0),
