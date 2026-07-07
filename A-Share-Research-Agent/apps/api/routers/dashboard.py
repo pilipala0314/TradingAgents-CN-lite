@@ -4,6 +4,7 @@
 - `GET /api/dashboard/overview` — 健康度 + 全球指数 + 缓存命中率
 - `GET /api/dashboard/stock/{code}` — 单只 A 股行情 + 最近 30 日 K 线 + 最近公告
 - `GET /api/dashboard/stock/{code}/decisions` — P0-T10 该股决策钻取
+- `GET /api/dashboard/sector/heatmap` — P0-T12 申万行业热力图矩阵
 """
 from __future__ import annotations
 
@@ -15,7 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
 from data_pipeline.providers.facade import get_router
+from data_pipeline.providers.sw_industry_provider import SWIndustryProvider
 from services.decision_drilldown_service import fetch_stock_decisions
+from services.sector_heatmap_service import build_sector_heatmap
 
 logger = logging.getLogger(__name__)
 
@@ -226,6 +229,41 @@ async def stock_decisions(
     except Exception as exc:  # pragma: no cover
         logger.exception("决策钻取失败 code=%s", code)
         raise HTTPException(status_code=500, detail=f"决策钻取失败: {exc}") from exc
+    return result
+
+
+# ── P0-T12 申万行业热力图 ─────────────────────────────
+
+
+@router.get("/sector/heatmap")
+async def sector_heatmap(
+    n_days: int = Query(5, ge=1, le=20, description="矩阵列数（交易日数）"),
+    lookback_calendar_days: int = Query(30, ge=5, le=180, description="回看日历天数"),
+    end_date: str | None = Query(None, description="截止日期 YYYY-MM-DD，默认今天"),
+) -> dict[str, Any]:
+    """P0-T12: 申万行业指数 31 行 × n_days 列 涨跌幅矩阵。
+
+    返回结构供前端 chartjs-chart-matrix 渲染热力图：
+    ```json
+    {
+      "matrix": [{"code": "801010", "name": "农林牧渔", "values": [pct, ...], "dates": [...]}, ...],
+      "dates": ["2026-07-01", ...],   // 全局列
+      "industry_count": 31,
+      "generated_at": "2026-07-07T..."
+    }
+    ```
+    """
+    try:
+        provider = SWIndustryProvider()
+        result = await build_sector_heatmap(
+            provider,
+            n_days=n_days,
+            lookback_calendar_days=lookback_calendar_days,
+            end_date=end_date,
+        )
+    except Exception as exc:
+        logger.exception("sector_heatmap 失败")
+        raise HTTPException(status_code=502, detail=f"板块热力图失败: {exc}") from exc
     return result
 
 

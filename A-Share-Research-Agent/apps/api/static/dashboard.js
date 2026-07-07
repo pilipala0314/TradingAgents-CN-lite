@@ -2823,6 +2823,8 @@ async function loadSignals() {
     if (_researchAuditCache) _renderResearchAudit(_researchAuditCache);
     _renderSignalsDrilldown();
     _renderSignalsMarket(groups.market || []);
+    // P0-T12: 板块热力图（独立接口，不阻塞主信号）
+    loadSectorHeatmap().catch((e) => console.warn("loadSectorHeatmap failed:", e));
   } catch (e) {
     const rootMessage = /getaddrinfo failed|Connect call failed|Connection refused/i.test(String(e.message || ""))
       ? `数据库连接不可达: ${e.message}`
@@ -2853,6 +2855,160 @@ async function loadSignals() {
     _renderWorkbenchSummary();
     _applySectionVisibility();
     _resetSignalsDerivedCharts();
+  }
+}
+
+// ── P0-T12 板块热力图 ────────────────────────────
+
+let _sectorHeatmapChart = null;
+let _sectorHeatmapCache = null;
+
+function _pctToColor(pct) {
+  // -5% 红 → 0 灰 → +5% 绿，线性插值
+  if (pct == null || Number.isNaN(pct)) return "rgba(100, 116, 139, 0.25)";
+  const clamped = Math.max(-5, Math.min(5, pct));
+  if (clamped >= 0) {
+    const t = clamped / 5;
+    // 0.0 → 灰，1.0 → 绿
+    const r = Math.round(100 - 66 * t);
+    const g = Math.round(116 + 50 * t);
+    const b = Math.round(139 - 44 * t);
+    return `rgba(${r}, ${g}, ${b}, ${0.4 + 0.45 * t})`;
+  } else {
+    const t = -clamped / 5;
+    // 0.0 → 灰，1.0 → 红
+    const r = Math.round(100 + 139 * t);
+    const g = Math.round(116 - 70 * t);
+    const b = Math.round(139 - 91 * t);
+    return `rgba(${r}, ${g}, ${b}, ${0.4 + 0.45 * t})`;
+  }
+}
+
+function _pctToText(pct) {
+  if (pct == null || Number.isNaN(pct)) return "—";
+  const s = pct >= 0 ? "+" : "";
+  return `${s}${pct.toFixed(1)}%`;
+}
+
+function renderSectorHeatmap() {
+  const canvas = document.getElementById("sector-heatmap-canvas");
+  if (!canvas) return;
+  if (_sectorHeatmapChart) {
+    _sectorHeatmapChart.destroy();
+    _sectorHeatmapChart = null;
+  }
+  if (!_sectorHeatmapCache || !_sectorHeatmapCache.matrix || _sectorHeatmapCache.matrix.length === 0) {
+    canvas.parentElement.innerHTML =
+      '<div class="sector-heatmap-empty">暂无板块热力图数据<br/><span style="font-size:11px;">接口 GET /api/dashboard/sector/heatmap</span></div>';
+    return;
+  }
+  const matrix = _sectorHeatmapCache.matrix;
+  const dates = _sectorHeatmapCache.dates || [];
+  if (!window.Chart) {
+    canvas.parentElement.innerHTML = '<div class="sector-heatmap-empty">Chart.js 未加载</div>';
+    return;
+  }
+  const matrixType = window.Chart.registry.controllers.get("matrix") ? "matrix" : null;
+  if (!matrixType) {
+    canvas.parentElement.innerHTML =
+      '<div class="sector-heatmap-empty">chartjs-chart-matrix 插件未加载</div>';
+    return;
+  }
+  // chartjs-chart-matrix 数据格式：每个 cell = {x, y, v, w, h}
+  const data = [];
+  for (let r = 0; r < matrix.length; r++) {
+    const row = matrix[r];
+    for (let c = 0; c < (row.values || []).length; c++) {
+      data.push({
+        x: dates[c] || `D${c + 1}`,
+        y: row.name || row.code,
+        v: row.values[c],
+      });
+    }
+  }
+  _sectorHeatmapChart = new window.Chart(canvas, {
+    type: "matrix",
+    data: {
+      datasets: [{
+        label: "板块涨跌幅 (%)",
+        data,
+        backgroundColor: (ctx) => _pctToColor(ctx.raw?.v),
+        borderColor: "rgba(15, 23, 42, 0.6)",
+        borderWidth: 1,
+        width: ({ chart }) => (chart.chartArea?.width / (dates.length || 1)) - 2,
+        height: ({ chart }) => (chart.chartArea?.height / (matrix.length || 1)) - 2,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => `${items[0]?.raw?.y || ""} · ${items[0]?.raw?.x || ""}`,
+            label: (ctx) => `涨跌幅: ${_pctToText(ctx.raw.v)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          type: "category",
+          labels: dates,
+          grid: { color: "rgba(148, 163, 184, 0.06)" },
+          ticks: { color: "#94a3b8", font: { size: 10 } },
+        },
+        y: {
+          type: "category",
+          labels: matrix.map((r) => r.name || r.code).reverse(),
+          offset: true,
+          grid: { color: "rgba(148, 163, 184, 0.06)" },
+          ticks: { color: "#94a3b8", font: { size: 10 } },
+        },
+      },
+    },
+  });
+
+  // 渲染图例
+  const wrap = canvas.parentElement;
+  if (wrap && !wrap.querySelector(".sector-heatmap-legend")) {
+    const legend = document.createElement("div");
+    legend.className = "sector-heatmap-legend";
+    legend.innerHTML =
+      `<span>-5%</span><div class="sector-heatmap-legend-bar"></div><span>+5%</span>
+       <span style="margin-left:auto;">${matrix.length} 行业 × ${dates.length} 日 · ${_formatNextRunTime(_sectorHeatmapCache.generated_at)}</span>`;
+    wrap.appendChild(legend);
+  }
+}
+
+async function loadSectorHeatmap() {
+  const daysEl = document.getElementById("signals-sector-heatmap-days");
+  const nDays = daysEl ? daysEl.value : "5";
+  const viewEl = document.getElementById("signals-sector-view");
+  const view = viewEl ? viewEl.value : "table";
+  const tableEl = document.getElementById("signals-sector");
+  const heatmapEl = document.getElementById("signals-sector-heatmap");
+  if (!tableEl || !heatmapEl) return;
+
+  // 视图切换
+  if (view === "heatmap") {
+    tableEl.style.display = "none";
+    heatmapEl.style.display = "block";
+  } else {
+    tableEl.style.display = "";
+    heatmapEl.style.display = "none";
+    return;
+  }
+
+  // 拉数据
+  try {
+    const data = await fetchJSON(`/api/dashboard/sector/heatmap?n_days=${nDays}`);
+    _sectorHeatmapCache = data;
+    renderSectorHeatmap();
+  } catch (e) {
+    heatmapEl.innerHTML = `<div class="sector-heatmap-empty" style="color:#f87171;">
+      板块热力图拉取失败: ${e.message}
+    </div>`;
   }
 }
 

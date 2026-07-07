@@ -1634,3 +1634,34 @@ canvas {
   color: #a5b4fc;
   border: 1px solid rgba(99, 102, 241, 0.4);
 }
+
+/* ── Sector 热力图（P0-T12）──────────────────── */
+.sector-heatmap-wrap {
+  margin-top: 12px;
+  padding: 14px;
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+}
+.sector-heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.sector-heatmap-legend-bar {
+  flex: 1;
+  max-width: 200px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #ef4444 0%, #64748b 50%, #22c55e 100%);
+}
+.sector-heatmap-empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}

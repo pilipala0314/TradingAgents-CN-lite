@@ -5,6 +5,7 @@
   <title>A-Share-Research-Agent · 投研 Dashboard</title>
   <link rel="stylesheet" href="/static/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2.0.1/dist/chartjs-chart-matrix.min.js"></script>
 </head>
 <body>
   <div class="app-layout">
@@ -396,9 +397,28 @@
         <section class="card signal-col-side">
           <div class="signal-section-head">
             <h2><span class="signal-num">②</span> 板块轮动</h2>
-            <span class="muted">领涨 / 领跌 · Top N</span>
+            <span class="muted">领涨 / 领跌 · Top N · 热力图</span>
           </div>
-          <div id="signals-sector" class="table-wrap"></div>
+          <div class="signal-trace-toolbar">
+            <label class="muted">视图：
+              <select id="signals-sector-view">
+                <option value="table" selected>表格</option>
+                <option value="heatmap">热力图</option>
+              </select>
+            </label>
+            <label class="muted">回看天数：
+              <select id="signals-sector-heatmap-days">
+                <option value="3">3</option>
+                <option value="5" selected>5</option>
+                <option value="10">10</option>
+                <option value="20">20</option>
+              </select>
+            </label>
+          </div>
+          <div id="signals-sector" class="table-wrap">加载中…</div>
+          <div id="signals-sector-heatmap" class="sector-heatmap-wrap" style="display:none;">
+            <canvas id="sector-heatmap-canvas" height="380"></canvas>
+          </div>
         </section>
       </div>
 
