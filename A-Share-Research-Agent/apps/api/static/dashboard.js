@@ -3107,6 +3107,47 @@ function stopSchedulerAutoRefresh() {
   }
 }
 
+// ── P1-T8 报告导出 Markdown ───────────────────────
+
+async function exportSignalsMarkdown() {
+  const btn = document.getElementById("signals-export-md");
+  if (!btn) return;
+  const oldText = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "导出中…";
+  try {
+    const businessDate = _signalsCache?.business_date || "";
+    const url = `/v1/research/signals/report?format=md&include_llm=true${businessDate ? `&business_date=${businessDate}` : ""}`;
+    const r = await fetch(url);
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      alert(`导出失败：${err.detail || r.status}`);
+      return;
+    }
+    const data = await r.json();
+    const content = data.content || "";
+    const dateLabel = data.business_date || new Date().toISOString().slice(0, 10);
+    // 浏览器下载 .md
+    const blob = new Blob([content], { type: "text/markdown;charset=utf-8" });
+    const objUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objUrl;
+    a.download = `a-share-report-${dateLabel}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(objUrl);
+    btn.textContent = `✅ 已导出 ${data.size || content.length} 字节`;
+  } catch (e) {
+    btn.textContent = `❌ ${e.message}`;
+  } finally {
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.textContent = oldText;
+    }, 2000);
+  }
+}
+
 // ── P1-T2 Watchlist ──────────────────────────────
 
 async function loadWatchlist(force = false) {
@@ -3447,6 +3488,9 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("signals-toggle-all").addEventListener("click", () => {
     _toggleAllSignalsSections();
   });
+  // P1-T8 报告导出
+  const exp = document.getElementById("signals-export-md");
+  if (exp) exp.addEventListener("click", exportSignalsMarkdown);
   // P1-T2 Watchlist 绑定
   const wlRefresh = document.getElementById("wl-refresh");
   if (wlRefresh) wlRefresh.addEventListener("click", () => loadWatchlist(true));
