@@ -819,6 +819,27 @@
           </section>
         </div>
       </section>
+
+      <!-- ③ 自动降级历史（P0-T9） -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">③</span> 自动降级历史 <span class="muted" style="font-weight:400">provider chain failover · 触发 / 恢复</span></h2>
+          <span class="muted" id="health-failover-count">—</span>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">历史条数：
+            <select id="health-failover-limit">
+              <option value="20">20</option>
+              <option value="50" selected>50</option>
+              <option value="100">100</option>
+              <option value="200">200</option>
+            </select>
+          </label>
+          <button id="health-failover-refresh" class="signal-btn-secondary" style="padding:4px 10px; font-size:12px;">↻ 立即扫描</button>
+        </div>
+        <div id="health-failover-active" class="failover-active-row"></div>
+        <div id="health-failover-table" class="table-wrap"></div>
+      </section>
     </div>
 
     <!-- Tab: 高级分析 (P5.2 walk-forward + 蒙特卡洛) -->

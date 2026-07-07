@@ -477,6 +477,106 @@ async function loadHealthDetail() {
   }
 }
 
+// ── P0-T9 健康 tab ③ 自动降级历史 ─────────────────────────
+
+function _formatTs(ts) {
+  if (!ts) return "—";
+  try {
+    const d = new Date(ts * 1000);
+    if (Number.isNaN(d.getTime())) return "—";
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  } catch (e) {
+    return "—";
+  }
+}
+
+function _renderFailoverActive(active) {
+  const wrap = document.getElementById("health-failover-active");
+  if (!wrap) return;
+  if (!active || active.length === 0) {
+    wrap.innerHTML = `<div class="failover-active-card none">
+      <div class="failover-active-icon">✓</div>
+      <div class="failover-active-body">
+        <div class="failover-active-title">无 active failover</div>
+        <div class="failover-active-meta">所有 provider chain 正常运行</div>
+      </div>
+    </div>`;
+    return;
+  }
+  wrap.innerHTML = active
+    .map((s) => {
+      const sinceStr = _formatTs(s.since_ts);
+      return `<div class="failover-active-card">
+        <div class="failover-active-icon">⚠</div>
+        <div class="failover-active-body">
+          <div class="failover-active-title">${s.method}: ${s.primary} → ${s.backup}</div>
+          <div class="failover-active-meta">since ${sinceStr} · ${s.reason || ""}</div>
+        </div>
+      </div>`;
+    })
+    .join("");
+}
+
+function _renderFailoverHistory(items) {
+  const wrap = document.getElementById("health-failover-table");
+  const countEl = document.getElementById("health-failover-count");
+  if (!wrap) return;
+  if (!items || items.length === 0) {
+    if (countEl) countEl.textContent = "0 条历史";
+    wrap.innerHTML = '<div class="muted" style="padding:24px; text-align:center;">尚无降级历史</div>';
+    return;
+  }
+  if (countEl) countEl.textContent = `${items.length} 条历史`;
+  const rows = items
+    .map(
+      (e) => `<tr>
+      <td>${_formatTs(e.ts)}</td>
+      <td><span class="failover-action-tag failover-action-${e.action}">${e.action.toUpperCase()}</span></td>
+      <td><code>${e.method}</code></td>
+      <td>${e.primary} <span class="muted">→</span> ${e.backup}</td>
+      <td class="muted" style="font-size:11px;">${e.reason || ""}</td>
+    </tr>`,
+    )
+    .join("");
+  wrap.innerHTML = `<table class="data-table">
+    <thead>
+      <tr>
+        <th>时间</th>
+        <th>动作</th>
+        <th>Method</th>
+        <th>Provider Chain</th>
+        <th>原因</th>
+      </tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+async function loadFailoverOverview(triggerCheck) {
+  const countEl = document.getElementById("health-failover-count");
+  if (countEl) countEl.textContent = "扫描中…";
+  try {
+    const url = triggerCheck
+      ? "/api/health/failover?trigger_check=true"
+      : "/api/health/failover";
+    const data = await fetchJSON(url);
+    _renderFailoverActive(data.active || []);
+    const limitEl = document.getElementById("health-failover-limit");
+    const limit = limitEl ? limitEl.value : "50";
+    const hist = await fetchJSON(`/api/health/failover/history?limit=${limit}`);
+    _renderFailoverHistory(hist.items || []);
+  } catch (e) {
+    if (countEl) countEl.textContent = "拉取失败";
+    const wrap = document.getElementById("health-failover-table");
+    if (wrap) {
+      wrap.innerHTML = `<div class="muted" style="color:#f87171; padding:18px; text-align:center;">
+        降级历史拉取失败: ${e.message}
+      </div>`;
+    }
+  }
+}
+
 function _renderFilteredTable() {
   if (!_healthCache) return;
   const provider = document.getElementById("health-provider-filter").value;
@@ -2867,6 +2967,7 @@ function switchTab(tabName) {
     loadSchedulerStatus();
   } else if (tabName === "health") {
     if (!_healthCache) loadHealthDetail();
+    loadFailoverOverview();
   } else if (tabName === "overview") {
     // 强制重画全球表格（确保 tab 隐藏后第一次显示正常）
   } else if (tabName === "backtest") {
@@ -2935,6 +3036,19 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
   document.getElementById("health-refresh").addEventListener("click", loadHealthDetail);
+  // P0-T9 自动降级历史 刷新按钮
+  const foRefresh = document.getElementById("health-failover-refresh");
+  if (foRefresh) {
+    foRefresh.addEventListener("click", () => {
+      loadFailoverOverview(true);
+    });
+  }
+  const foLimit = document.getElementById("health-failover-limit");
+  if (foLimit) {
+    foLimit.addEventListener("change", () => {
+      loadFailoverOverview();
+    });
+  }
   document.getElementById("health-provider-filter").addEventListener("change", _renderFilteredTable);
   document.getElementById("health-method-filter").addEventListener("change", _renderFilteredTable);
   document.getElementById("health-alert-only").addEventListener("change", _renderFilteredTable);
