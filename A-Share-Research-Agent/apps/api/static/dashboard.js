@@ -4419,24 +4419,122 @@ async function alertListChannels() {
 }
 
 async function alertListRules() {
-  const r = await fetch("/admin/alert/rules");
+  const r = await fetch("/api/health/alerts/rules");
   const data = await r.json();
   const rows = data.rules
     .map(
       (r) => `
-      <tr>
-        <td>${r.name}</td>
-        <td>${r.level}</td>
-        <td>${r.comparator} ${r.threshold}</td>
-        <td>${r.description}</td>
+      <tr data-rule-name="${r.name}">
+        <td><code style="font-size:11px;">${r.name}</code>${r.is_active ? "" : " <span class='muted'>(已停用)</span>"}</td>
+        <td><span class="badge ${r.level}">${r.level}</span></td>
+        <td><code>${r.comparator} ${r.threshold}</code></td>
+        <td class="muted">${r.description || "—"}</td>
+        <td>
+          <button class="btn" data-alert-edit="${r.name}" type="button">✏️ 编辑</button>
+          ${r.is_active
+            ? `<button class="btn" data-alert-delete="${r.name}" type="button">🗑 删除</button>`
+            : `<button class="btn btn-primary" data-alert-enable="${r.name}" type="button">↻ 启用</button>`}
+        </td>
+      </tr>
+      <tr data-rule-form="${r.name}" style="display:none;">
+        <td colspan="5" style="background: rgba(56,189,248,0.05); padding: 8px 12px;">
+          <div class="form-row" style="align-items:center; gap:8px;">
+            <label class="muted">threshold:</label>
+            <input type="number" step="0.01" data-form-th="${r.name}" value="${r.threshold}" style="width:100px;" />
+            <label class="muted">level:</label>
+            <select data-form-lv="${r.name}" style="width:100px;">
+              <option value="info" ${r.level === "info" ? "selected" : ""}>info</option>
+              <option value="warn" ${r.level === "warn" ? "selected" : ""}>warn</option>
+              <option value="error" ${r.level === "error" ? "selected" : ""}>error</option>
+            </select>
+            <label class="muted">comparator:</label>
+            <select data-form-cmp="${r.name}" style="width:80px;">
+              <option value="gte" ${r.comparator === "gte" ? "selected" : ""}>≥</option>
+              <option value="gt" ${r.comparator === "gt" ? "selected" : ""}>></option>
+              <option value="lte" ${r.comparator === "lte" ? "selected" : ""}>≤</option>
+              <option value="lt" ${r.comparator === "lt" ? "selected" : ""}><</option>
+              <option value="eq" ${r.comparator === "eq" ? "selected" : ""}>=</option>
+            </select>
+            <button class="btn btn-primary" data-form-save="${r.name}" type="button">保存</button>
+            <button class="btn" data-form-cancel="${r.name}" type="button">取消</button>
+            <span class="muted" data-form-status="${r.name}" style="margin-left:8px;"></span>
+          </div>
+        </td>
       </tr>`,
     )
     .join("");
   document.getElementById("alert-rules-table").innerHTML = `
     <table>
-      <thead><tr><th>规则名</th><th>级别</th><th>阈值</th><th>说明</th></tr></thead>
+      <thead><tr>
+        <th>规则名</th><th>级别</th><th>阈值</th><th>说明</th><th>操作</th>
+      </tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
+
+  // 绑定：编辑 / 删除 / 启用 / 表单保存 / 取消
+  document.querySelectorAll("[data-alert-edit]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const n = b.dataset.alertEdit;
+      const row = document.querySelector(`[data-rule-form="${n}"]`);
+      if (row) row.style.display = row.style.display === "none" ? "" : "none";
+    });
+  });
+  document.querySelectorAll("[data-alert-delete]").forEach((b) => {
+    b.addEventListener("click", async () => {
+      if (!confirm(`确定停用规则 ${b.dataset.alertDelete}？`)) return;
+      const r2 = await fetch(
+        `/api/health/alerts/rules/${encodeURIComponent(b.dataset.alertDelete)}`,
+        { method: "DELETE" },
+      );
+      if (r2.ok) {
+        await alertListRules();
+      } else {
+        const err = await r2.json().catch(() => ({ detail: r2.statusText }));
+        alert(`停用失败：${err.detail || r2.status}`);
+      }
+    });
+  });
+  document.querySelectorAll("[data-alert-enable]").forEach((b) => {
+    b.addEventListener("click", async () => {
+      // re-enable 通过 update_rule 改任意字段
+      const n = b.dataset.alertEnable;
+      const r2 = await fetch(
+        `/api/health/alerts/rules/${encodeURIComponent(n)}?threshold=0.5`,
+        { method: "PUT" },
+      );
+      if (r2.ok) {
+        await alertListRules();
+      }
+    });
+  });
+  document.querySelectorAll("[data-form-save]").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const n = b.dataset.formSave;
+      const th = document.querySelector(`[data-form-th="${n}"]`).value;
+      const lv = document.querySelector(`[data-form-lv="${n}"]`).value;
+      const cmp = document.querySelector(`[data-form-cmp="${n}"]`).value;
+      const status = document.querySelector(`[data-form-status="${n}"]`);
+      if (status) status.textContent = "保存中…";
+      const r2 = await fetch(
+        `/api/health/alerts/rules/${encodeURIComponent(n)}?threshold=${th}&level=${lv}&comparator=${cmp}`,
+        { method: "PUT" },
+      );
+      if (r2.ok) {
+        if (status) status.textContent = "✅ 已保存";
+        await alertListRules();
+      } else {
+        const err = await r2.json().catch(() => ({ detail: r2.statusText }));
+        if (status) status.textContent = `❌ ${err.detail || r2.status}`;
+      }
+    });
+  });
+  document.querySelectorAll("[data-form-cancel]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const n = b.dataset.formCancel;
+      const row = document.querySelector(`[data-rule-form="${n}"]`);
+      if (row) row.style.display = "none";
+    });
+  });
 }
 
 async function alertTest() {
