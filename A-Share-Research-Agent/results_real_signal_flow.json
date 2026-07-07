@@ -1,0 +1,44 @@
+{
+  "ran_at": "2026-07-03T13:39:44.643846+08:00",
+  "llm": {
+    "available": true,
+    "info": "provider=openai model=deepseek-chat"
+  },
+  "db": {
+    "available": true,
+    "info": "SELECT 1 ok"
+  },
+  "graph_elapsed_sec": 12.065,
+  "graph_halt": false,
+  "graph_halt_reason": "",
+  "market_outlook_present": true,
+  "committee_decision_present": true,
+  "ranked_sectors_count": 1,
+  "stock_outlooks_count": 1,
+  "final_report_chars": 1062,
+  "persist_elapsed_sec": 3.654,
+  "persist_summary": {
+    "market_id": "326ea13b-f9d5-5eb3-8ca0-a4f3632619db",
+    "sector_count": 1,
+    "approved_count": 1,
+    "blocked_count": 1,
+    "total": 4
+  },
+  "fetch_elapsed_sec": 0.12,
+  "fetch_summary": {
+    "market": 1,
+    "sector": 1,
+    "approved": 1,
+    "blocked": 1
+  },
+  "fetch_market_verdict": "neutral",
+  "fetch_market_risk_budget": "reduced",
+  "fetch_market_rationale_excerpt": "市场处于risk_on_expansion阶段，宏观环境有利，但板块层面仅有一个emerging阶段的主线候选板块，未达到confirmed/strengthening的准入要求。个股000636虽趋势bullish，但板块未确认、conviction仅0.4，且战术标签无异常，但规则3要求板块阶段必须为confirmed或strengthening，故无法准入。全市场无任何个股满足准入条件，因此",
+  "fetch_approved_symbols": [
+    "000636"
+  ],
+  "fetch_blocked_symbols": [
+    "000636"
+  ],
+  "status": "ok"
+}

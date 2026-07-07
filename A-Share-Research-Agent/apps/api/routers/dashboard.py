@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date as _date
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
@@ -233,6 +234,38 @@ async def stock_decisions(
 
 
 # ── P0-T12 申万行业热力图 ─────────────────────────────
+
+
+
+
+@router.get("/sector/sankey")
+async def sector_sankey(
+    business_date: _date | None = Query(
+        None, description="指定业务日期（None = 最新）"
+    ),
+    limit_per_type: int = Query(50, ge=1, le=200),
+    max_links: int = Query(60, ge=1, le=200),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """P1-T9 板块桑基图 — 行业 → 准入/拦截个股。
+
+    兼容 chartjs-chart-sankey 数据结构：nodes[] + links[]。
+    """
+    from services.sector_service import get_sector_flow
+
+    try:
+        data = await get_sector_flow(
+            session,
+            business_date=business_date,
+            limit_per_type=limit_per_type,
+            max_links=max_links,
+        )
+    except Exception as exc:
+        logger.error("sector_sankey 失败: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500, detail=f"{type(exc).__name__}: {exc}",
+        ) from exc
+    return data
 
 
 @router.get("/sector/heatmap")

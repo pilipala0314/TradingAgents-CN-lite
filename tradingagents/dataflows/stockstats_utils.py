@@ -74,6 +74,14 @@ def load_ohlcv(symbol: str, curr_date: str) -> pd.DataFrame:
     if os.path.exists(data_file):
         data = pd.read_csv(data_file, on_bad_lines="skip", encoding="utf-8")
     else:
+        # Clean up old caches for this symbol
+        import glob
+        for old_file in glob.glob(os.path.join(config["data_cache_dir"], f"{safe_symbol}-YFin-data-*.csv")):
+            try:
+                os.remove(old_file)
+            except OSError:
+                pass
+
         data = yf_retry(lambda: yf.download(
             symbol,
             start=start_str,

@@ -10,17 +10,19 @@
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import date
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pandas as pd
 import pytest
 
+from data_pipeline.etl import bse_kline_etl as bse_etl_mod
 from data_pipeline.etl.bse_kline_etl import (
+    BSEKlineETL,
     BSE_EXCHANGE,
     BSE_SECURITY_TYPE,
     BSE_SOURCE_TAG,
-    BSEKlineETL,
     _build_bse_security_df,
 )
 from data_pipeline.providers.bse_kline_provider import BSEKlineProvider
@@ -119,10 +121,7 @@ class TestETLDailyBars:
         provider = MagicMock()
         session = MagicMock()
         # load_security_rows 返 1 个 non-BJ 行
-        with patch_load_security_rows(session, [("000001", "uuid-1", "SZ")]):
-            from data_pipeline.etl import bse_kline_etl as mod
-            mod.OpsAuditService.start_job = AsyncMock(return_value="job-1")
-            mod.OpsAuditService.finish_job_success = AsyncMock()
+        with _stub_bse_module(rows=[("000001", "uuid-1", "SZ")])():
             etl = BSEKlineETL(provider)
             out = await etl.run_daily_bars(
                 session, business_date=date(2025, 7, 7), symbols=None,
@@ -146,15 +145,11 @@ class TestETLDailyBars:
         ])
 
         session = MagicMock()
-        with patch_load_security_rows(session, [
+        with _stub_bse_module(rows=[
             ("83000001", "uuid-1", "BJ"),
             ("83000002", "uuid-2", "BJ"),
             ("83000003", "uuid-3", "BJ"),
-        ]):
-            from data_pipeline.etl import bse_kline_etl as mod
-            mod.OpsAuditService.start_job = AsyncMock(return_value="job-1")
-            mod.OpsAuditService.finish_job_success = AsyncMock()
-            mod.upsert_dataframe = AsyncMock()
+        ])():
             etl = BSEKlineETL(provider)
             out = await etl.run_daily_bars(
                 session, business_date=date(2025, 7, 7), symbols=None,
@@ -167,8 +162,27 @@ class TestETLDailyBars:
 # ── helper ─────────────────────────
 
 
-def patch_load_security_rows(session, rows):
-    """用 patch 替换 load_security_rows 让它返指定 rows。"""
-    from data_pipeline.etl import bse_kline_etl as mod
-    mod.load_security_rows = AsyncMock(return_value=rows)
-    return session
+def _stub_bse_module(rows: list | None = None, upsert_mock: AsyncMock | None = None):
+    """Stub bse_etl_mod 的 load_security_rows / upsert_dataframe + OpsAudit。
+
+    返回 _Patcher context manager，使用 with 即可。
+    """
+    from contextlib import contextmanager
+    from unittest.mock import patch as _patch
+
+    @contextmanager
+    def _ctx():
+        # load_security_rows
+        with _patch.object(bse_etl_mod, "load_security_rows",
+                           new=AsyncMock(return_value=rows if rows is not None else [])):
+            # OpsAuditService 静态方法
+            with _patch.object(bse_etl_mod.OpsAuditService, "start_job",
+                               new=AsyncMock(return_value="job-1")):
+                with _patch.object(bse_etl_mod.OpsAuditService, "finish_job_success",
+                                   new=AsyncMock()):
+                    with _patch.object(bse_etl_mod.OpsAuditService, "finish_job_failed",
+                                       new=AsyncMock()):
+                        with _patch.object(bse_etl_mod, "upsert_dataframe",
+                                           new=upsert_mock or AsyncMock()):
+                            yield
+    return _ctx

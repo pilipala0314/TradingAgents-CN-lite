@@ -48,6 +48,8 @@ class FactETLPipeline:
         self.market_feature = MarketDataSyncJob(self.client)
         self.sector_feature = SectorFeatureSyncJob(self.client)
         self.stock_feature = StockFeatureSyncJob(self.client)
+        self.bse_kline = BSEKlineETL()
+        self.gem_kline = GEMKlineETL()
 
     async def run_close_pipeline(
         self,
@@ -103,6 +105,24 @@ class FactETLPipeline:
             results["stock_feature"] = await self.stock_feature.run(
                 session, business_date, symbols=symbols
             )
+            await session.commit()
+
+        # 阶段 9-10：北交所/创业板 K 线
+        async with AsyncSessionLocal() as session:
+            try:
+                results["bse_kline"] = await self.bse_kline.run_full(
+                    session, business_date=business_date
+                )
+            except Exception as exc:
+                logger.warning("BSE K 线同步失败（不阻塞主链）: %s", exc)
+                results["bse_kline"] = {"error": str(exc)}
+            try:
+                results["gem_kline"] = await self.gem_kline.run_full(
+                    session, business_date=business_date
+                )
+            except Exception as exc:
+                logger.warning("GEM K 线同步失败（不阻塞主链）: %s", exc)
+                results["gem_kline"] = {"error": str(exc)}
             await session.commit()
 
         logger.info("=== FactETLPipeline.end business_date=%s ===", business_date)

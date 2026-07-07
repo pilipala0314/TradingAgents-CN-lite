@@ -161,6 +161,14 @@ def load_ohlcv_baostock(symbol: str, curr_date: str) -> pd.DataFrame:
     if os.path.exists(cache_file):
         data = pd.read_csv(cache_file, on_bad_lines="skip", encoding="utf-8")
     else:
+        # Clean up old caches for this symbol
+        import glob
+        for old_file in glob.glob(os.path.join(config["data_cache_dir"], f"{safe_symbol}-BaoStock-data-*.csv")):
+            try:
+                os.remove(old_file)
+            except OSError:
+                pass
+
         bs_code = _to_bs_code(symbol)
         df = _query_kline(bs_code, start, end)
 

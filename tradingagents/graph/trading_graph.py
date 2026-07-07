@@ -244,6 +244,9 @@ class TradingAgentsGraph:
                 return None, None, None
 
             actual_days = min(holding_days, len(stock) - 1, len(bench) - 1)
+            if stock["Close"].iloc[0] == 0 or bench["Close"].iloc[0] == 0:
+                return None, None, None
+
             raw = float(
                 (stock["Close"].iloc[actual_days] - stock["Close"].iloc[0])
                 / stock["Close"].iloc[0]
@@ -287,7 +290,7 @@ class TradingAgentsGraph:
             bench_close = bench_df['Close'].values
 
             actual_days = min(holding_days, len(stock_close) - 1, len(bench_close) - 1)
-            if actual_days < 1:
+            if actual_days < 1 or stock_close[0] == 0 or bench_close[0] == 0:
                 return None, None, None
 
             raw = float((stock_close[actual_days] - stock_close[0]) / stock_close[0])
@@ -318,26 +321,34 @@ class TradingAgentsGraph:
 
         benchmark = self._resolve_benchmark(ticker)
         updates = []
-        for entry in pending:
+        
+        import concurrent.futures
+
+        def process_entry(entry):
             raw, alpha, days = self._fetch_returns(
                 ticker, entry["date"], benchmark=benchmark,
             )
             if raw is None:
-                continue  # price not available yet — try again next run
+                return None  # price not available yet — try again next run
             reflection = self.reflector.reflect_on_final_decision(
                 final_decision=entry.get("decision", ""),
                 raw_return=raw,
                 alpha_return=alpha,
                 benchmark_name=benchmark,
             )
-            updates.append({
+            return {
                 "ticker": ticker,
                 "trade_date": entry["date"],
                 "raw_return": raw,
                 "alpha_return": alpha,
                 "holding_days": days,
                 "reflection": reflection,
-            })
+            }
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(5, len(pending))) as executor:
+            results = list(executor.map(process_entry, pending))
+
+        updates = [r for r in results if r is not None]
 
         if updates:
             self.memory_log.batch_update_with_outcomes(updates)

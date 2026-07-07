@@ -1,0 +1,53 @@
+{
+  "business_date": "2026-07-02",
+  "market": {
+    "market_regime": "risk_on_expansion",
+    "risk_appetite": "neutral",
+    "liquidity": "ample",
+    "key_factors": [
+      "PMI 站上荣枯线, 制造业景气回升",
+      "PBoC 流动性维持宽松, 隔夜 SHIBOR 处于低位",
+      "国家队护盘动作明显, 沪深 300 ETF 持续净申购"
+    ]
+  },
+  "sectors": [
+    {
+      "sector_id": "IND_ELEC",
+      "sector_name": "电子元件",
+      "sector_stage": "diverging",
+      "strength_score": 0.62,
+      "one_liner": "AI 算力板块高位震荡, MLCC 涨价预期分化, 龙头主动回调"
+    },
+    {
+      "sector_id": "IND_BANK",
+      "sector_name": "银行",
+      "sector_stage": "confirmed",
+      "strength_score": 0.75,
+      "one_liner": "国家队护盘主力, 国有大行高位维稳, 高股息再受关注"
+    }
+  ],
+  "stock": {
+    "symbol": "000636",
+    "trend_signal": "bearish",
+    "entry_timing": "avoid",
+    "risk_mode": "defensive",
+    "position_role": "leader",
+    "conviction_score": 0.25,
+    "support_level": 66.96,
+    "resistance_level": 71.0,
+    "stop_loss_hint": 66.96,
+    "tactical_flags": [
+      "a_kill",
+      "first_yin_after_streak"
+    ],
+    "key_evidence": "风华高科今日下跌-6.16%, 振幅高达-6.44%, 成交额25.2亿, 换手率2.66%, 成交活跃. 今日股价跌停. 上海某券商发布\"涨价就涨\"调研报告, 公司近期大股东减持, 套现\"A杀\"形态, 估值百分位高达95%, PE(TTM)262倍, 泡沫迹象明显. 尽管游资继续买入4.33亿, 中长期趋势下行, 主资净卖全天共流出-23.56亿, 游资进场机构卖出形态非常态.",
+    "upstream_alignment": "conflicting"
+  },
+  "committee_decision": {
+    "verdict": "neutral",
+    "approved_targets": [],
+    "blocked_targets": [],
+    "risk_budget": "normal",
+    "rationale": "市场=risk_on_expansion；准入 0 只，拦截 0 只。"
+  }
+}

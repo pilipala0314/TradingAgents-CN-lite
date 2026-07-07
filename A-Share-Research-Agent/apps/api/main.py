@@ -28,6 +28,7 @@ from apps.api.routers import (
     metrics,
     research,
     rules,
+    watchlist,
 )
 from apps.scheduler.etl_scheduler import start_scheduler as start_etl_scheduler
 from apps.scheduler.research_scheduler import register_research_jobs
@@ -89,6 +90,7 @@ app.include_router(dashboard.router)
 app.include_router(backtest.router)
 app.include_router(metrics.router)
 app.include_router(admin.router)
+app.include_router(watchlist.router)
 
 # 静态资源（Dashboard HTML / JS / CSS）
 if STATIC_DIR.exists():

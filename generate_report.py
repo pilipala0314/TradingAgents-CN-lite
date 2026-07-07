@@ -101,9 +101,24 @@ CN_SYSTEM_PROMPT = """你是高盛级别的中文投行报告设计师。
 
 def _call_llm(md_content: str, system_prompt: str) -> str:
     """Call LLM to generate HTML from markdown content."""
+    # ``os.environ.get(key, default)`` does NOT fall back to ``default`` when
+    # the env var is set to an empty string — it returns the empty string.
+    # An empty base_url makes httpx raise UnsupportedProtocol, so guard with
+    # ``or`` to recover the default when the user left the env var blank.
+    base_url = (
+        os.environ.get("TRADINGAGENTS_LLM_BACKEND_URL")
+        or "https://api.openai.com/v1"
+    )
+    
+    # Dynamically fetch the correct API key based on the configured provider
+    provider = os.environ.get("TRADINGAGENTS_LLM_PROVIDER", "openai").lower()
+    from tradingagents.llm_clients.api_key_env import get_api_key_env
+    api_key_env = get_api_key_env(provider) or "OPENAI_API_KEY"
+    api_key = os.environ.get(api_key_env) or os.environ.get("OPENAI_API_KEY")
+
     client = OpenAI(
-        api_key=os.environ.get("OPENAI_API_KEY"),
-        base_url=os.environ.get("TRADINGAGENTS_LLM_BACKEND_URL", "https://api.openai.com/v1"),
+        api_key=api_key,
+        base_url=base_url,
     )
 
     response = client.chat.completions.create(

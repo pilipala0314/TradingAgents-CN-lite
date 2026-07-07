@@ -16,15 +16,33 @@ from typing import Tuple
 
 
 # Canonical, ordered 5-tier scale (most bullish to most bearish).
+# English canonical + Chinese aliases (so the same parser handles both the
+# English markdown path and the Chinese output path). Keep positions aligned
+# so callers that need an index still get a consistent ordinal.
 RATINGS_5_TIER: Tuple[str, ...] = (
     "Buy", "Overweight", "Hold", "Underweight", "Sell",
 )
+# Chinese aliases mapped 1:1 to the English canonical (same ordinal).
+_RATINGS_5_TIER_CN: Tuple[str, ...] = (
+    "买入", "增持", "持有", "减持", "卖出",
+)
+# Lookup set used by parse_rating. Both languages live here so the parser
+# does not have to know which language the agent wrote in.
+_RATING_SET_EN = {r.lower() for r in RATINGS_5_TIER}
+_RATING_SET_CN = set(_RATINGS_5_TIER_CN)
+_RATING_SET = _RATING_SET_EN | _RATING_SET_CN
 
-_RATING_SET = {r.lower() for r in RATINGS_5_TIER}
-
-# Matches "Rating: X" / "rating - X" / "Rating: **X**" — tolerates markdown
-# bold wrappers and either a colon or hyphen separator.
-_RATING_LABEL_RE = re.compile(r"(?:rating|评级)[s*]*[:：\-][\s*]*(\w+)", re.IGNORECASE)
+# Matches "Rating: X" / "rating - X" / "Rating: **X**" / "评级：卖出" —
+# tolerates markdown bold wrappers, either a colon or hyphen separator,
+# and either ASCII or CJK label/value. \w alone does not match CJK, so we
+# union an explicit CJK range (U+4E00..U+9FA5, CJK Unified Ideographs base
+# block 一..龥) via a non-capturing alternation. Without this fix, Chinese
+# labels like "评级：卖出" silently fell through to the default ("Hold"),
+# mislabelling the actual decision.
+_RATING_LABEL_RE = re.compile(
+    r"(?:rating|评级)[s*]*[:：\-][\s*]*(?:\*+)?([A-Za-z]+|[一-龥]+)(?:\*+)?",
+    re.IGNORECASE,
+)
 
 
 def parse_rating(text: str, default: str = "Hold") -> str:

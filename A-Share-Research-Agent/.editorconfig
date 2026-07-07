@@ -1,0 +1,29 @@
+# EditorConfig — https://editorconfig.org
+# 用于统一跨编辑器（VSCode / PyCharm / Vim）的缩进/换行/EOL 风格
+
+root = true
+
+[*]
+indent_style = space
+indent_size = 4
+end_of_line = lf
+charset = utf-8
+trim_trailing_whitespace = true
+insert_final_newline = true
+max_line_length = 110
+
+[*.{md,yml,yaml,toml,json}]
+indent_size = 2
+trim_trailing_whitespace = false
+
+[*.{yml,yaml}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+[*.md]
+max_line_length = off
+trim_trailing_whitespace = false
+
+# Windows 用户注意：仓库 .gitattributes 会强制 LF，编辑器应配合

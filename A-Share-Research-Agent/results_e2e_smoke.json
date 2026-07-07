@@ -1,0 +1,134 @@
+{
+  "base": "http://127.0.0.1:8012",
+  "ran_at": "2026-07-07T19:03:17+0800",
+  "total": 18,
+  "failed": 0,
+  "results": [
+    {
+      "label": "GET /health?mode=summary",
+      "path": "/health?mode=summary",
+      "code": 200,
+      "elapsed_ms": 37,
+      "summary": "keys=['status', 'service', 'version', 'db_ok', 'db_target', 'db_detail']"
+    },
+    {
+      "label": "GET /health?mode=endpoints",
+      "path": "/health?mode=endpoints",
+      "code": 200,
+      "elapsed_ms": 31,
+      "summary": "keys=['status', 'router', 'providers', 'by_provider']"
+    },
+    {
+      "label": "GET /api/dashboard/health",
+      "path": "/api/dashboard/health",
+      "code": 200,
+      "elapsed_ms": 8,
+      "summary": "keys=['providers', 'endpoints_total', 'calls_total', 'calls_success', 'calls_success_rate', 'alerts']"
+    },
+    {
+      "label": "GET /api/dashboard/overview",
+      "path": "/api/dashboard/overview",
+      "code": 200,
+      "elapsed_ms": 333,
+      "summary": "keys=['health', 'global_quotes']"
+    },
+    {
+      "label": "GET /v1/research/signals/latest",
+      "path": "/v1/research/signals/latest",
+      "code": 200,
+      "elapsed_ms": 39,
+      "summary": "keys=['ok', 'business_date', 'groups', 'summary']"
+    },
+    {
+      "label": "GET /v1/research/signals/today",
+      "path": "/v1/research/signals/today",
+      "code": 200,
+      "elapsed_ms": 18,
+      "summary": "keys=['ok', 'business_date', 'groups', 'summary']"
+    },
+    {
+      "label": "GET /v1/research/decision-traces/latest",
+      "path": "/v1/research/decision-traces/latest",
+      "code": 200,
+      "elapsed_ms": 14,
+      "summary": "keys=['ok', 'business_date', 'decision_layer', 'summary', 'traces']"
+    },
+    {
+      "label": "GET /v1/research/audit/latest",
+      "path": "/v1/research/audit/latest",
+      "code": 200,
+      "elapsed_ms": 51,
+      "summary": "keys=['ok', 'business_date', 'consistency', 'signal_summary', 'decision_trace', 'market_signal']"
+    },
+    {
+      "label": "GET /api/dashboard/stock/000636",
+      "path": "/api/dashboard/stock/000636",
+      "code": 200,
+      "elapsed_ms": 696,
+      "summary": "keys=['code', 'quote', 'bars', 'announcements', 'errors']"
+    },
+    {
+      "label": "GET /v1/backtest/strategies",
+      "path": "/v1/backtest/strategies",
+      "code": 200,
+      "elapsed_ms": 28,
+      "summary": "keys=['strategies']"
+    },
+    {
+      "label": "GET /v1/backtest/universes",
+      "path": "/v1/backtest/universes",
+      "code": 200,
+      "elapsed_ms": 18,
+      "summary": "keys=['universes']"
+    },
+    {
+      "label": "GET /v1/backtest/runs",
+      "path": "/v1/backtest/runs",
+      "code": 200,
+      "elapsed_ms": 39,
+      "summary": "keys=['count', 'runs']"
+    },
+    {
+      "label": "GET /v1/macro/snapshot",
+      "path": "/v1/macro/snapshot",
+      "code": 200,
+      "elapsed_ms": 23,
+      "summary": "keys=['pmi', 'cpi', 'm2', 'bond_yield', 'source_meta', 'regime_hint']"
+    },
+    {
+      "label": "GET /metrics/info",
+      "path": "/metrics/info",
+      "code": 200,
+      "elapsed_ms": 28,
+      "summary": "keys=['name', 'version', 'env', 'uptime_s']"
+    },
+    {
+      "label": "GET /metrics/traces?limit=3",
+      "path": "/metrics/traces?limit=3",
+      "code": 200,
+      "elapsed_ms": 34,
+      "summary": "keys=['count', 'spans']"
+    },
+    {
+      "label": "GET /admin/tenants",
+      "path": "/admin/tenants",
+      "code": 200,
+      "elapsed_ms": 62,
+      "summary": "keys=['tenants']"
+    },
+    {
+      "label": "GET /admin/alert/rules",
+      "path": "/admin/alert/rules",
+      "code": 200,
+      "elapsed_ms": 11,
+      "summary": "keys=['rules']"
+    },
+    {
+      "label": "GET /admin/retention/status",
+      "path": "/admin/retention/status",
+      "code": 200,
+      "elapsed_ms": 86,
+      "summary": "keys=['policy', 'tables', 'checked_at']"
+    }
+  ]
+}

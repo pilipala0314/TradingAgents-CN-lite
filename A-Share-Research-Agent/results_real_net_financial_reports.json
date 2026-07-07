@@ -1,0 +1,83 @@
+{
+  "ran_at": "2026-07-03T14:08:31+0800",
+  "summary": {
+    "600519:get_balance_sheet": {
+      "ok": true,
+      "count": 102,
+      "elapsed_sec": 2.373,
+      "sample_keys": [
+        "SECUCODE",
+        "SECURITY_CODE",
+        "INDUSTRY_CODE",
+        "ORG_CODE",
+        "SECURITY_NAME_ABBR",
+        "INDUSTRY_NAME"
+      ]
+    },
+    "600519:get_cashflow_statement": {
+      "ok": true,
+      "count": 98,
+      "elapsed_sec": 3.647,
+      "sample_keys": [
+        "SECUCODE",
+        "SECURITY_CODE",
+        "INDUSTRY_CODE",
+        "ORG_CODE",
+        "SECURITY_NAME_ABBR",
+        "INDUSTRY_NAME"
+      ]
+    },
+    "600519:get_income_statement": {
+      "ok": true,
+      "count": 102,
+      "elapsed_sec": 2.689,
+      "sample_keys": [
+        "SECUCODE",
+        "SECURITY_CODE",
+        "INDUSTRY_CODE",
+        "ORG_CODE",
+        "SECURITY_NAME_ABBR",
+        "INDUSTRY_NAME"
+      ]
+    },
+    "000001:get_balance_sheet": {
+      "ok": true,
+      "count": 118,
+      "elapsed_sec": 3.206,
+      "sample_keys": [
+        "SECUCODE",
+        "SECURITY_CODE",
+        "INDUSTRY_CODE",
+        "ORG_CODE",
+        "SECURITY_NAME_ABBR",
+        "INDUSTRY_NAME"
+      ]
+    },
+    "000001:get_cashflow_statement": {
+      "ok": true,
+      "count": 103,
+      "elapsed_sec": 6.481,
+      "sample_keys": [
+        "SECUCODE",
+        "SECURITY_CODE",
+        "INDUSTRY_CODE",
+        "ORG_CODE",
+        "SECURITY_NAME_ABBR",
+        "INDUSTRY_NAME"
+      ]
+    },
+    "000001:get_income_statement": {
+      "ok": true,
+      "count": 121,
+      "elapsed_sec": 2.839,
+      "sample_keys": [
+        "SECUCODE",
+        "SECURITY_CODE",
+        "INDUSTRY_CODE",
+        "ORG_CODE",
+        "SECURITY_NAME_ABBR",
+        "INDUSTRY_NAME"
+      ]
+    }
+  }
+}

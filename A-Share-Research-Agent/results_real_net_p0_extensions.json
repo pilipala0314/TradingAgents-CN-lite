@@ -1,0 +1,132 @@
+{
+  "results": {
+    "cninfo_600519": {
+      "error": "DataFetchError: 数据路由全部失败: method=get_cninfo_announcements attempted=['cninfo'] last_error=cninfo hisAnnouncement 未返回公告, code=600519, range=2026-06-03..2026-07-03"
+    },
+    "cninfo_000001": {
+      "method": "get_cninfo_announcements(000001)",
+      "type": "list",
+      "len": 3,
+      "sample": [
+        {
+          "announcement_id": "1225406051",
+          "title": "董事会决议公告",
+          "published_at": "finalpage",
+          "url": "http://static.cninfo.com.cn/finalpage/2026-07-03/1225406051.PDF",
+          "type": "01010503||010112||01239901",
+          "type_code": "",
+          "orgid": "gssz0000001"
+        },
+        {
+          "announcement_id": "1225387929",
+          "title": "关于副行长任职资格核准的公告",
+          "published_at": "finalpage",
+          "url": "http://static.cninfo.com.cn/finalpage/2026-06-26/1225387929.PDF",
+          "type": "01010503||010112||012303",
+          "type_code": "",
+          "orgid": "gssz0000001"
+        }
+      ]
+    },
+    "global_quote_default": {
+      "method": "get_global_quote()",
+      "type": "dict",
+      "keys": [
+        "000001",
+        "399001",
+        "399006",
+        "000300",
+        "000688",
+        "HSI",
+        "DJI",
+        "IXIC"
+      ],
+      "sample": {
+        "000001": {
+          "name": "上证指数",
+          "price": 4054.16,
+          "change_pct": 0.63
+        },
+        "399001": {
+          "name": "深证成指",
+          "price": 15697.29,
+          "change_pct": 1.28
+        },
+        "399006": {
+          "name": "创业板指",
+          "price": 4081.35,
+          "change_pct": 1.6
+        }
+      }
+    },
+    "global_quote_hk00700": {
+      "method": "get_global_quote(hk00700)",
+      "type": "dict",
+      "keys": [
+        "00700"
+      ],
+      "sample": {
+        "00700": {
+          "name": "腾讯控股",
+          "price": 437.6,
+          "change_pct": 1.72
+        }
+      }
+    }
+  },
+  "health": {
+    "router": "DataRouter",
+    "providers": [
+      "cninfo",
+      "global_quote"
+    ],
+    "endpoints_total": 2,
+    "calls_total": 4,
+    "calls_success": 3,
+    "calls_success_rate": 0.75,
+    "cache": {
+      "hits": 0,
+      "misses": 8,
+      "sets": 3,
+      "deletes": 0,
+      "hit_rate": 0.0
+    },
+    "single_point_methods": [
+      "get_concept_blocks",
+      "get_dragon_tiger",
+      "get_finance_snapshot",
+      "get_fund_flow_minute",
+      "get_industry_ranking",
+      "get_quote_5level"
+    ],
+    "single_point_endpoints": [],
+    "endpoints": [
+      {
+        "method": "get_cninfo_announcements",
+        "provider": "cninfo",
+        "total": 2,
+        "success": 1,
+        "failure": 1,
+        "success_rate": 0.5,
+        "p95_latency_ms": 3922.0,
+        "fallback_count": 0,
+        "fallback_rate": 0.0,
+        "last_error": "cninfo hisAnnouncement 未返回公告, code=600519, range=2026-06-03..2026-07-03",
+        "last_called_at": 1783046711.6148727
+      },
+      {
+        "method": "get_global_quote",
+        "provider": "global_quote",
+        "total": 2,
+        "success": 2,
+        "failure": 0,
+        "success_rate": 1.0,
+        "p95_latency_ms": 578.0,
+        "fallback_count": 0,
+        "fallback_rate": 0.0,
+        "last_error": "",
+        "last_called_at": 1783046712.5724115
+      }
+    ]
+  }
+}

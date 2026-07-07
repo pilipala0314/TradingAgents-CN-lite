@@ -41,6 +41,8 @@ def _init_akshare_anti_scraping():
     """
     import requests
 
+    import threading
+
     if hasattr(requests, '_akshare_headers_patched'):
         return
 
@@ -53,14 +55,16 @@ def _init_akshare_anti_scraping():
 
     original_get = requests.get
     last_request_time = {'time': 0}
+    rate_limit_lock = threading.Lock()
 
     def patched_get(url, **kwargs):
         # Rate limit eastmoney.com requests (0.5s minimum interval)
         if 'eastmoney.com' in url:
-            elapsed = time.time() - last_request_time['time']
-            if elapsed < 0.5:
-                time.sleep(0.5 - elapsed)
-            last_request_time['time'] = time.time()
+            with rate_limit_lock:
+                elapsed = time.time() - last_request_time['time']
+                if elapsed < 0.5:
+                    time.sleep(0.5 - elapsed)
+                last_request_time['time'] = time.time()
 
         # curl_cffi path: bypass TLS fingerprinting for eastmoney.com
         if use_curl_cffi and 'eastmoney.com' in url:
@@ -231,6 +235,14 @@ def load_ohlcv_akshare(symbol: str, curr_date: str) -> pd.DataFrame:
     if os.path.exists(cache_file):
         data = pd.read_csv(cache_file, on_bad_lines="skip", encoding="utf-8")
     else:
+        # Clean up old caches for this symbol
+        import glob
+        for old_file in glob.glob(os.path.join(config["data_cache_dir"], f"{safe_symbol}-AKShare-data-*.csv")):
+            try:
+                os.remove(old_file)
+            except OSError:
+                pass
+
         import akshare as ak
 
         code = _extract_code(symbol)
@@ -543,28 +555,36 @@ def get_AShare_global_news(
             look_back_days = config.get("global_news_lookback_days", 7)
 
         articles = []
-        # Fetch CCTV news for multiple days
+        # Fetch CCTV news for multiple days concurrently
         curr_dt = datetime.strptime(curr_date, "%Y-%m-%d")
-        for day_offset in range(look_back_days):
+        import concurrent.futures
+
+        def fetch_cctv(day_offset):
             fetch_date = curr_dt - __import__('datetime').timedelta(days=day_offset)
             date_str = fetch_date.strftime("%Y%m%d")
             try:
-                df = ak.news_cctv(date=date_str)
-                if df is not None and not df.empty:
-                    for _, row in df.head(limit).iterrows():
-                        title = str(row.get('title', ''))
-                        content = str(row.get('content', ''))
-                        date_val = str(row.get('date', ''))
-                        article = f"### {title}\n"
-                        if date_val:
-                            article += f"**Date:** {date_val}\n"
-                        if content and content != 'nan':
-                            if len(content) > 500:
-                                content = content[:500] + "..."
-                            article += f"\n{content}\n"
-                        articles.append(article)
+                return ak.news_cctv(date=date_str)
             except Exception as e:
                 logger.warning(f"CCTV news fetch failed for {date_str}: {e}")
+                return None
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(7, look_back_days)) as executor:
+            dfs = list(executor.map(fetch_cctv, range(look_back_days)))
+
+        for df in dfs:
+            if df is not None and not df.empty:
+                for _, row in df.head(limit).iterrows():
+                    title = str(row.get('title', ''))
+                    content = str(row.get('content', ''))
+                    date_val = str(row.get('date', ''))
+                    article = f"### {title}\n"
+                    if date_val:
+                        article += f"**Date:** {date_val}\n"
+                    if content and content != 'nan':
+                        if len(content) > 500:
+                            content = content[:500] + "..."
+                        article += f"\n{content}\n"
+                    articles.append(article)
             if len(articles) >= limit:
                 break
 

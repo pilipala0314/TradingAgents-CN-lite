@@ -1,0 +1,114 @@
+# A-Share Research Agent 本机一键部署配置
+#
+# 使用方法：
+#   1. cp .env.example .env  （然后填入真实 apikey/密码）
+#   2. docker compose pull   （可选，本地有镜像可跳过）
+#   3. docker compose up -d postgres redis
+#   4. docker compose run --rm api alembic upgrade head
+#   5. docker compose up -d api worker flower
+#
+# 5 个服务：
+#   - postgres    PostgreSQL 16 主库
+#   - redis       Redis 7 (broker + result backend)
+#   - api         FastAPI（lifespan 内挂 APScheduler）
+#   - worker      Celery worker（消费 ETL 任务）
+#   - flower      Celery 监控 UI（http://localhost:5555）
+#
+# 注意：
+# - 容器内访问宿主机 PostgreSQL 时，host 用 host.docker.internal（Mac/Win 通用）。
+# - 如果 Postgres 也在同一 compose 网络内，则直接用服务名 `postgres`。
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ashare-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - ashare_pg_data:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: ashare-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ashare-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    ports:
+      - "${API_PORT:-8765}:8765"
+    command: ["uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8765"]
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ashare-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    command: >
+      celery -A apps.worker.celery_app.celery_app worker
+        --loglevel=INFO --concurrency=2
+
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ashare-flower
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      FLOWER_BASIC_AUTH: ${FLOWER_BASIC_AUTH:-admin:admin}
+    ports:
+      - "${FLOWER_PORT:-5555}:5555"
+    command: >
+      celery -A apps.worker.celery_app.celery_app flower
+        --port=5555 --url_prefix=flower
+
+volumes:
+  ashare_pg_data:

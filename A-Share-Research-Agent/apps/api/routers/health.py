@@ -170,3 +170,57 @@ async def failover_force_recover(method: str) -> dict[str, Any]:
     """强制退出 failover（运维手动）。"""
     changed = force_recover(method, reason="manual via API")
     return {"method": method, "recovered": changed}
+
+
+# ── P1-T5 告警规则在线编辑 ─────────────────────────
+
+
+@router.get("/api/health/alerts/rules")
+async def alerts_list_rules() -> dict[str, Any]:
+    """列出所有告警规则（含 is_active 标记）。"""
+    from services.health_alert import HealthAlertService
+
+    svc = HealthAlertService.get()
+    return {"count": len(svc.list_rules()), "rules": svc.list_rules()}
+
+
+@router.put("/api/health/alerts/rules/{name}")
+async def alerts_update_rule(
+    name: str,
+    threshold: float | None = Query(None, description="新阈值"),
+    level: str | None = Query(None, description="新级别 (info/warn/error)"),
+    comparator: str | None = Query(None, description="新比较器 (gte/gt/lte/lt/eq)"),
+) -> dict[str, Any]:
+    """在线修改 in-memory 告警规则。
+
+    至少需传一个参数；rule 不存在 → 404；非法 level/comparator → 422。
+    """
+    from services.health_alert import HealthAlertService
+
+    if threshold is None and level is None and comparator is None:
+        raise HTTPException(status_code=400, detail="至少需传一个参数（threshold/level/comparator）")
+    try:
+        svc = HealthAlertService.get()
+        updated = svc.update_rule(
+            name,
+            threshold=threshold,
+            level=level,
+            comparator=comparator,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if updated is None:
+        raise HTTPException(status_code=404, detail=f"rule {name} 不存在")
+    return {"updated": True, "rule": updated}
+
+
+@router.delete("/api/health/alerts/rules/{name}")
+async def alerts_delete_rule(name: str) -> dict[str, Any]:
+    """软删告警规则（is_active=False，下次评估跳过）。"""
+    from services.health_alert import HealthAlertService
+
+    svc = HealthAlertService.get()
+    changed = svc.soft_delete_rule(name)
+    if not changed:
+        raise HTTPException(status_code=404, detail=f"rule {name} 不存在或已软删")
+    return {"deleted": True, "name": name}
