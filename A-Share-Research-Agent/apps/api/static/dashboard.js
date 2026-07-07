@@ -3107,6 +3107,95 @@ function stopSchedulerAutoRefresh() {
   }
 }
 
+// ── P1-T10 板块 → 个股 桑基图 ─────────────────────
+
+let _sankeyChart = null;
+
+async function loadSectorSankey() {
+  const statusEl = document.getElementById("sankey-status");
+  const summaryEl = document.getElementById("sankey-summary");
+  if (statusEl) statusEl.textContent = "加载中…";
+  try {
+    const r = await fetch("/api/dashboard/sector/sankey?max_links=80");
+    if (!r.ok) throw new Error(`sankey 接口失败: ${r.status}`);
+    const data = await r.json();
+    if (statusEl) statusEl.textContent = `已加载 · ${data.reason || "ok"}`;
+    if (summaryEl) {
+      const c = data.counts || {};
+      summaryEl.textContent =
+        `共 ${c.sectors || 0} 个行业 / ${c.stocks || 0} 只个股 / ${c.links || 0} 条流` +
+        ` (准入 ${c.approved || 0} / 拦截 ${c.blocked || 0})`;
+    }
+    _renderSankey(data);
+  } catch (e) {
+    if (statusEl) statusEl.textContent = `❌ ${e.message}`;
+  }
+}
+
+function _renderSankey(data) {
+  const canvas = document.getElementById("sector-sankey-canvas");
+  if (!canvas) return;
+  if (_sankeyChart) {
+    _sankeyChart.destroy();
+    _sankeyChart = null;
+  }
+  const nodes = data.nodes || [];
+  const links = data.links || [];
+  if (nodes.length === 0 || links.length === 0) {
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "rgba(148, 163, 184, 0.6)";
+      ctx.font = "14px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText("暂无桑基数据（当日无 approved/blocked signals）", canvas.width / 2, canvas.height / 2);
+    }
+    return;
+  }
+  // 颜色：行业用主色蓝, 准入用绿, 拦截用红
+  const nodeColor = (n) => n.kind === "sector"
+    ? "rgba(56, 189, 248, 0.85)"
+    : (n._kind || "approved") === "blocked"
+      ? "rgba(248, 113, 113, 0.85)"
+      : "rgba(74, 222, 128, 0.85)";
+  // 标注每只 stock 的 kind（基于 link）
+  for (const n of nodes) {
+    if (n.kind === "stock") {
+      const inbound = links.find((l) => l.target === n.id);
+      n._kind = inbound ? inbound.kind : "approved";
+    }
+  }
+  const coloredNodes = nodes.map((n) => ({
+    ...n,
+    color: nodeColor(n),
+  }));
+  const coloredLinks = links.map((l) => ({
+    ...l,
+    color: l.kind === "blocked"
+      ? "rgba(248, 113, 113, 0.4)"
+      : "rgba(74, 222, 128, 0.4)",
+  }));
+  _sankeyChart = new Chart(canvas, {
+    type: "sankey",
+    data: {
+      datasets: [{
+        data: coloredLinks,
+        colorFrom: (c) => c.dataset.data[c.dataIndex]?.color || "rgba(56,189,248,0.5)",
+        colorTo: (c) => c.dataset.data[c.dataIndex]?.color || "rgba(56,189,248,0.5)",
+        colorMode: "gradient",
+        borderColor: "rgba(15, 23, 42, 0.4)",
+        borderWidth: 1,
+        labels: coloredNodes,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      layout: { padding: 12 },
+    },
+  });
+}
+
 // ── P1-T8 报告导出 Markdown ───────────────────────
 
 async function exportSignalsMarkdown() {
@@ -3459,6 +3548,9 @@ document.addEventListener("DOMContentLoaded", () => {
     _researchAuditCache = null;
     loadSignals();
   });
+  // P1-T10 sankey
+  const sankeyBtn = document.getElementById("sankey-refresh");
+  if (sankeyBtn) sankeyBtn.addEventListener("click", loadSectorSankey);
   // 细节 section 默认折叠（突出 5 段叙事：头图/市场/板块/选股/拦截）
   document.querySelectorAll(".signals-collapsible").forEach((s) => s.classList.add("collapsed"));
   document.getElementById("signals-run-filter-completed").addEventListener("change", () => {

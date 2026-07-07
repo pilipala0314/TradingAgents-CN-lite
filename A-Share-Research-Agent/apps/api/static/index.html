@@ -6,6 +6,7 @@
   <link rel="stylesheet" href="/static/style.css" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix@2.0.1/dist/chartjs-chart-matrix.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-sankey@0.10.0/dist/chartjs-chart-sankey.min.js"></script>
 </head>
 <body>
   <div class="app-layout">
@@ -427,6 +428,22 @@
           </div>
         </section>
       </div>
+
+      <!-- ②-bis 板块 → 个股 桑基图 (P1-T10) -->
+      <section class="card signals-collapsible collapsed" data-section-key="sector-sankey">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">②ⓑ</span> 板块 → 个股 桑基图</h2>
+          <span class="muted">行业 → 准入/拦截个股（基于 confidence 流量）</span>
+        </div>
+        <div class="form-row" style="margin-bottom: 12px;">
+          <button id="sankey-refresh" class="signal-btn-primary" type="button">↻ 刷新桑基图</button>
+          <span class="muted" id="sankey-status">待加载</span>
+        </div>
+        <div id="sankey-summary" class="muted" style="margin-bottom:8px;"></div>
+        <div style="height: 480px; position: relative;">
+          <canvas id="sector-sankey-canvas"></canvas>
+        </div>
+      </section>
 
       <!-- ③ 准入 vs 拦截 · 决策结果 -->
       <div class="signal-row-2">
