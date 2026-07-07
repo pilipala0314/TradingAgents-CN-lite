@@ -3393,6 +3393,95 @@ async function _createWatchlistItem() {
   }
 }
 
+async function _addCurrentStockToWatchlist() {
+  // P1-T13: stock 详情页 → 加入自选（用默认分组或首个分组）
+  const codeEl = document.getElementById("stock-code");
+  const sym = (codeEl?.value || "").trim();
+  const statusEl = document.getElementById("stock-watchlist-status");
+  if (!sym) {
+    if (statusEl) statusEl.textContent = "请先输入代码";
+    return;
+  }
+  if (statusEl) statusEl.textContent = "正在加入…";
+
+  // 1) 拉取全部分组
+  let lists = _watchlistCache;
+  if (!lists) {
+    try {
+      const r = await fetch("/api/watchlist");
+      if (!r.ok) throw new Error(`watchlist list failed: ${r.status}`);
+      const data = await r.json();
+      lists = data.items || [];
+      _watchlistCache = lists;
+    } catch (err) {
+      if (statusEl) statusEl.textContent = `拉取分组失败：${err.message}`;
+      return;
+    }
+  }
+
+  // 2) 找默认分组 / 首个分组
+  let target = lists.find((w) => w.name === "默认" || w.is_default) || lists[0];
+  if (!target) {
+    // 没有分组 → 创建默认分组
+    try {
+      const cr = await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "默认", description: "P1-T13 自动创建" }),
+      });
+      if (!cr.ok) throw new Error(`create watchlist failed: ${cr.status}`);
+      const cw = await cr.json();
+      target = cw;
+      _watchlistCache = null;
+      await loadWatchlist(true);
+    } catch (err) {
+      if (statusEl) statusEl.textContent = `创建默认分组失败：${err.message}`;
+      return;
+    }
+  }
+
+  // 3) POST 加入
+  try {
+    const r = await fetch(`/api/watchlist/${target.watchlist_id}/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ symbol: sym, note: "自 stock tab 加入" }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({ detail: r.statusText }));
+      if (statusEl) statusEl.textContent = `加入失败：${err.detail || r.status}`;
+      return;
+    }
+    if (statusEl) statusEl.textContent = `✓ 已加入「${target.name}」`;
+    _watchlistCache = null;
+    // 不阻塞：刷新 watchlist cache
+    loadWatchlist(true).catch(() => {});
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `加入失败：${err.message}`;
+  }
+}
+
+function _highlightWatchlistSymbols() {
+  // P1-T13: signals tab → 标记 watchlist 中的 symbol (gold badge)
+  // 轻量联动：仅在 signals tab 切换到时给表格 cell 加 data-watchlist
+  if (!_watchlistCache) return;
+  const symbols = new Set();
+  // 仅取当前选中分组的 symbols
+  // 这里简化为：如果 watchlist 中任一分组含有该 symbol，则算
+  for (const w of _watchlistCache) {
+    if (Array.isArray(w.symbols)) {
+      for (const s of w.symbols) symbols.add(s);
+    }
+  }
+  document.querySelectorAll("[data-symbol]").forEach((el) => {
+    const s = el.dataset.symbol;
+    if (symbols.has(s)) {
+      el.classList.add("watchlist-marker");
+      el.setAttribute("title", "★ 在自选中");
+    }
+  });
+}
+
 async function _createWatchlistList() {
   const nameEl = document.getElementById("wl-new-name");
   const descEl = document.getElementById("wl-new-desc");
@@ -3452,6 +3541,10 @@ function switchTab(tabName) {
   } else if (tabName === "signals") {
     if (!_signalsCache) loadSignals();
     loadSchedulerStatus();
+    // P1-T13: 标星 watchlist 标的
+    setTimeout(_highlightWatchlistSymbols, 200);
+  } else if (tabName === "watchlist") {
+    if (!_watchlistCache) loadWatchlist();
   } else if (tabName === "health") {
     if (!_healthCache) loadHealthDetail();
     loadFailoverOverview();
@@ -3478,6 +3571,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const days = parseInt(document.getElementById("kline-days").value, 10);
     loadStock(document.getElementById("stock-code").value.trim(), { metric, days });
   });
+  // P1-T13: stock → watchlist 跨 tab 联动
+  const addWl = document.getElementById("stock-add-watchlist");
+  if (addWl) addWl.addEventListener("click", () => _addCurrentStockToWatchlist());
+  const jumpWl = document.getElementById("stock-jump-watchlist");
+  if (jumpWl) jumpWl.addEventListener("click", () => switchTab("watchlist"));
   document.getElementById("stock-code").addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       const metric = document.getElementById("kline-metric").value;
