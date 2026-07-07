@@ -14,6 +14,7 @@ from core.logger import setup_logging
 from data_pipeline.etl import FactETLPipeline
 from data_pipeline.etl.futures_kline_etl import FuturesKlineETL
 from data_pipeline.etl.hk_kline_etl import HKKlineETL
+from data_pipeline.etl.sw_industry_kline_etl import SWIndustryKlineETL
 from data_pipeline.etl.us_kline_etl import USKlineETL
 
 setup_logging()
@@ -156,6 +157,35 @@ async def _run_futures_close_async(
             raise
 
 
+async def _run_sw_industry_close_async(
+    business_date: date,
+    *,
+    symbols: list[str] | None = None,
+    datalen: int = 30,
+) -> dict:
+    """P0-T4: 申万行业指数 K 线 ETL。"""
+    from core.database import AsyncSessionLocal
+
+    etl = SWIndustryKlineETL()
+    async with AsyncSessionLocal() as session:
+        try:
+            result = await etl.run_full(
+                session,
+                business_date=business_date,
+                symbols=symbols,
+                datalen=datalen,
+            )
+            await session.commit()
+            return {
+                "security_sync_count": result["security_sync"]["synced_count"],
+                "kline_synced_count": result["kline"]["synced_count"],
+                "kline_failure_count": result["kline"]["failure_count"],
+            }
+        except Exception:
+            await session.rollback()
+            raise
+
+
 @celery_app.task(name="ashare.run_hk_close_etl", bind=True, max_retries=2)
 def run_hk_close_etl(
     self,
@@ -237,4 +267,34 @@ def run_futures_close_etl(
         )
     except Exception as exc:
         logger.exception("期货 K 线 ETL 失败，准备重试: %s", exc)
+        raise self.retry(exc=exc, countdown=60) from exc
+
+
+# ── P0-T4: 申万行业指数 K 线 ETL ──────────────────────────────────────
+
+
+@celery_app.task(name="ashare.run_sw_industry_close_etl", bind=True, max_retries=2)
+def run_sw_industry_close_etl(
+    self,
+    business_date_str: str | None = None,
+    symbols: list[str] | None = None,
+    datalen: int = 30,
+) -> dict:
+    """P0-T4: 申万行业指数 K 线 ETL（31 个申万一级行业指数）。
+
+    失败策略：自动重试 2 次，间隔 60s。
+    """
+    business_date = (
+        date.fromisoformat(business_date_str)
+        if business_date_str
+        else (datetime.now() - timedelta(days=1)).date()
+    )
+    try:
+        return asyncio.run(
+            _run_sw_industry_close_async(
+                business_date, symbols=symbols, datalen=datalen
+            )
+        )
+    except Exception as exc:
+        logger.exception("申万行业指数 K 线 ETL 失败，准备重试: %s", exc)
         raise self.retry(exc=exc, countdown=60) from exc
