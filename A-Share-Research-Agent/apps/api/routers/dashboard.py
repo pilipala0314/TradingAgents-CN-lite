@@ -344,6 +344,108 @@ async def stock_capital_flow(
     return result
 
 
+# ── P2-T6 舆情新闻端点 ─────────────────────────────
+
+
+@router.get("/stock/{code}/news")
+async def stock_news(
+    code: str = Path(..., description="6 位股票代码"),
+    limit: int = Query(20, ge=1, le=100, description="返回条数"),
+    days: int = Query(7, ge=1, le=90, description="回溯天数"),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """P2-T6: 该股最近 N 天的舆情新闻。
+
+    返回：
+    - security_id / name
+    - news[]: 列表（title / content / url / published_at / sentiment_score / sentiment_label / source_name）
+    - aggregate: 分布统计 (positive/neutral/total/avg_score/label)
+    """
+    from datetime import datetime, timedelta
+    from sqlalchemy import and_, select
+    from models.dimensions import DimSecurity
+    from models.facts import FactNewsItem
+
+    result: dict[str, Any] = {
+        "code": code,
+        "security_id": None,
+        "name": None,
+        "news": [],
+        "aggregate": {},
+        "errors": {},
+    }
+
+    # 1) 反查
+    try:
+        sec_row = (
+            await session.execute(select(DimSecurity).where(DimSecurity.symbol == code))
+        ).scalar_one_or_none()
+        if sec_row:
+            result["security_id"] = str(sec_row.security_id)
+            result["name"] = sec_row.name
+    except Exception as exc:
+        result["errors"]["security_lookup"] = f"{type(exc).__name__}: {exc}"
+
+    if not result["security_id"]:
+        return result
+
+    # 2) 拉新闻
+    try:
+        from uuid import UUID
+        sec_uuid = UUID(result["security_id"])
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        q = (
+            select(FactNewsItem)
+            .where(
+                and_(
+                    FactNewsItem.security_id == sec_uuid,
+                    FactNewsItem.published_at >= cutoff,
+                )
+            )
+            .order_by(FactNewsItem.published_at.desc().nulls_last())
+            .limit(limit)
+        )
+        rows = (await session.execute(q)).scalars().all()
+        news_list: list[dict[str, Any]] = []
+        scores: list[float] = []
+        labels: list[str] = []
+        for r in rows:
+            news_list.append({
+                "news_id": r.news_id,
+                "title": r.title,
+                "content": r.content,
+                "url": r.url,
+                "published_at": r.published_at.isoformat() if r.published_at else None,
+                "source_name": r.source_name,
+                "sentiment_score": float(r.sentiment_score) if r.sentiment_score is not None else None,
+                "sentiment_label": r.sentiment_label,
+            })
+            if r.sentiment_score is not None:
+                scores.append(float(r.sentiment_score))
+            if r.sentiment_label:
+                labels.append(r.sentiment_label)
+        result["news"] = news_list
+
+        # 3) 聚合
+        from data_pipeline.providers.news_sentiment_provider import aggregate_sentiment
+        result["aggregate"] = {
+            "total_count": len(news_list),
+            "positive_count": sum(1 for l in labels if l == "positive"),
+            "negative_count": sum(1 for l in labels if l == "negative"),
+            "neutral_count": sum(1 for l in labels if l == "neutral"),
+            "avg_score": round(sum(scores) / len(scores), 4) if scores else 0.0,
+            "label": (
+                "positive" if (sum(scores) / max(1, len(scores))) >= 0.2 else
+                "negative" if (sum(scores) / max(1, len(scores))) <= -0.2 else
+                "neutral"
+            ),
+        }
+    except Exception as exc:
+        result["errors"]["news_query"] = f"{type(exc).__name__}: {exc}"
+
+    return result
+
+
 # ── P2-T4 财务指标端点 ─────────────────────────────
 
 

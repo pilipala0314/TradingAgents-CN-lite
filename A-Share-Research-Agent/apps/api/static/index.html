@@ -252,6 +252,33 @@
         <div id="stock-fin-meta" class="muted" style="font-size:11px; margin-top:6px;"></div>
       </section>
 
+      <!-- ②d 新闻舆情 -->
+      <section class="card signals-collapsible" data-section-key="stock-news">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">②d</span> 新闻舆情 <span class="muted" style="font-weight:400">情感打分 · positive / neutral / negative</span></h2>
+          <button id="stock-news-refresh" class="signal-btn-secondary" style="padding:4px 10px; font-size:12px;">↻ 刷新</button>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">回溯天数：
+            <select id="stock-news-days">
+              <option value="3">3</option>
+              <option value="7" selected>7</option>
+              <option value="14">14</option>
+              <option value="30">30</option>
+            </select>
+          </label>
+          <label class="muted">最大条数：
+            <select id="stock-news-limit">
+              <option value="10">10</option>
+              <option value="20" selected>20</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+        </div>
+        <div id="stock-news-kpis" class="signal-kpis" style="grid-template-columns: repeat(4, 1fr);">加载中…</div>
+        <div id="stock-news-list" class="table-wrap" style="margin-top:12px;"></div>
+      </section>
+
       <!-- ③ 最近公告（折叠） -->
       <section class="card signals-collapsible" data-section-key="stock-announcements">
         <div class="signal-section-head">

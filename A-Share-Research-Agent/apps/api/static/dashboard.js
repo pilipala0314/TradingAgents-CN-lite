@@ -607,6 +607,8 @@ async function loadStock(code, options) {
   loadStockCapitalFlow(code).catch((e) => console.warn("loadStockCapitalFlow failed:", e));
   // P2-T4: 并行拉财务指标
   loadStockFinancial(code).catch((e) => console.warn("loadStockFinancial failed:", e));
+  // P2-T6: 并行拉新闻舆情
+  loadStockNews(code).catch((e) => console.warn("loadStockNews failed:", e));
 }
 
 // ── P0-T11 决策钻取（stock tab ②） ─────────────────────────────
@@ -911,6 +913,74 @@ async function loadStockFinancial(code) {
     }
   } catch (e) {
     tblEl.innerHTML = `<div class="muted" style="color:#f87171;">财务指标拉取失败: ${e.message}</div>`;
+  }
+}
+
+// ── P2-T6 新闻舆情（stock tab ②d） ─────────────────────────────
+
+async function loadStockNews(code) {
+  const kpisEl = document.getElementById("stock-news-kpis");
+  const listEl = document.getElementById("stock-news-list");
+  if (!kpisEl) return;
+  if (!code || !/^\d{6}$/.test(code)) {
+    kpisEl.innerHTML = '<div class="muted">请输入 6 位股票代码</div>';
+    return;
+  }
+  const daysEl = document.getElementById("stock-news-days");
+  const limitEl = document.getElementById("stock-news-limit");
+  const days = daysEl ? daysEl.value : "7";
+  const limit = limitEl ? limitEl.value : "20";
+  kpisEl.innerHTML = '<div class="muted">加载新闻中…</div>';
+  try {
+    const data = await fetchJSON(`/api/dashboard/stock/${code}/news?days=${days}&limit=${limit}`);
+    const news = Array.isArray(data.news) ? data.news : [];
+    const agg = data.aggregate || {};
+
+    // 1) KPI
+    const kpi = (label, value, color) => `
+      <div class="signal-kpi" style="border-color:${color || "var(--border)"};">
+        <div class="signal-kpi-label">${label}</div>
+        <div class="signal-kpi-value" style="color:${color || "var(--text)"};">${value}</div>
+      </div>`;
+    const labelColor = agg.label === "positive" ? "#4ade80" : agg.label === "negative" ? "#f87171" : "#94a3b8";
+    kpisEl.innerHTML = [
+      kpi("新闻总数", agg.total_count || 0, "var(--text)"),
+      kpi("正面", agg.positive_count || 0, "#4ade80"),
+      kpi("负面", agg.negative_count || 0, "#f87171"),
+      kpi("情感", (agg.label || "neutral").toUpperCase(), labelColor),
+    ].join("");
+
+    // 2) 列表
+    if (news.length === 0) {
+      listEl.innerHTML = `<div class="muted" style="padding:16px;">无新闻数据（请先跑 ETL 拉新闻）</div>`;
+      return;
+    }
+    const labelColors = {
+      positive: { bg: "rgba(74,222,128,0.15)", fg: "#4ade80" },
+      negative: { bg: "rgba(248,113,113,0.15)", fg: "#f87171" },
+      neutral: { bg: "rgba(148,163,184,0.15)", fg: "#94a3b8" },
+    };
+    listEl.innerHTML = `<table class="data-table" style="width:100%;">
+      <thead><tr>
+        <th style="width:60px;">情感</th>
+        <th>标题</th>
+        <th style="width:120px;">来源</th>
+        <th style="width:130px;">发布时间</th>
+      </tr></thead>
+      <tbody>${news.map((n) => {
+        const c = labelColors[n.sentiment_label] || labelColors.neutral;
+        const labelDisplay = (n.sentiment_label || "neutral").toUpperCase();
+        const scoreText = n.sentiment_score !== null && n.sentiment_score !== undefined
+          ? `${labelDisplay} ${n.sentiment_score.toFixed(2)}` : labelDisplay;
+        return `<tr>
+          <td><span style="background:${c.bg}; color:${c.fg}; padding:2px 6px; border-radius:4px; font-size:11px; font-weight:600;">${scoreText}</span></td>
+          <td><a href="${n.url}" target="_blank" rel="noopener" style="color:inherit; text-decoration:none;">${n.title}</a></td>
+          <td class="muted">${n.source_name || "—"}</td>
+          <td class="muted" style="font-size:11px;">${(n.published_at || "").replace("T", " ").slice(0, 16) || "—"}</td>
+        </tr>`;
+      }).join("")}</tbody></table>`;
+  } catch (e) {
+    kpisEl.innerHTML = `<div class="muted" style="color:#f87171;">新闻拉取失败: ${e.message}</div>`;
   }
 }
 
@@ -3819,6 +3889,28 @@ document.addEventListener("DOMContentLoaded", () => {
     finPeriods.addEventListener("change", () => {
       const code = document.getElementById("stock-code").value.trim();
       loadStockFinancial(code);
+    });
+  }
+  // P2-T6 新闻舆情
+  const newsRefresh = document.getElementById("stock-news-refresh");
+  if (newsRefresh) {
+    newsRefresh.addEventListener("click", () => {
+      const code = document.getElementById("stock-code").value.trim();
+      loadStockNews(code);
+    });
+  }
+  const newsDays = document.getElementById("stock-news-days");
+  if (newsDays) {
+    newsDays.addEventListener("change", () => {
+      const code = document.getElementById("stock-code").value.trim();
+      loadStockNews(code);
+    });
+  }
+  const newsLimit = document.getElementById("stock-news-limit");
+  if (newsLimit) {
+    newsLimit.addEventListener("change", () => {
+      const code = document.getElementById("stock-code").value.trim();
+      loadStockNews(code);
     });
   }
   const decLookback = document.getElementById("stock-decision-lookback");
