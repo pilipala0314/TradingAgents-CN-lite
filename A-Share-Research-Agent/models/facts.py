@@ -174,6 +174,67 @@ class FactRuleHit(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
 
+class FactFinancialReport(Base):
+    """P2-T3 财报关键指标事实表（每只股票 × 报告期 → 一行）。
+
+    数据源：akshare `stock_financial_analysis_indicator_em`（主要财务指标）
+    字段采用宽松 Numeric(20, 4)，允许 None（缺失值）。
+    唯一键：(security_id, report_period, indicator_code, version)
+    """
+    __tablename__ = "fact_financial_report"
+    __table_args__ = (
+        UniqueConstraint(
+            "security_id",
+            "report_period",
+            "indicator_code",
+            "version",
+            name="uq_fact_financial_report_security_period_indicator_version",
+        ),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    security_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    report_period = Column(Date, nullable=False, index=True)
+    indicator_code = Column(String(64), nullable=False)
+    indicator_name = Column(String(128), nullable=True)
+    value = Column(Numeric(20, 4), nullable=True)
+    unit = Column(String(16), nullable=True)
+    source = Column(String(32), nullable=False)
+    version = Column(Integer, nullable=False, default=1)
+    tenant_id = Column(String(64), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+
+class FactNewsItem(Base):
+    """P2-T5 舆情新闻条目表（一行 = 一条新闻）。
+
+    数据源：akshare `stock_news_em`（东财新闻流）。
+    - url 是主键判重字段（同一 URL 不重复入库）
+    - sentiment_score: -1..+1 (P2-T5 词典打分，LLM 增强在 P5)
+    - sentiment_label: positive / neutral / negative
+    """
+    __tablename__ = "fact_news_item"
+    __table_args__ = (
+        UniqueConstraint("url", name="uq_fact_news_item_url"),
+    )
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    security_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    symbol = Column(String(16), nullable=True, index=True)
+    news_id = Column(String(64), nullable=True, index=True)
+    title = Column(Text, nullable=False)
+    content = Column(Text, nullable=True)
+    url = Column(String(512), nullable=False)
+    published_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    source_name = Column(String(64), nullable=True)
+    sentiment_score = Column(Numeric(6, 4), nullable=True)
+    sentiment_label = Column(String(16), nullable=True)
+    score_method = Column(String(32), nullable=True)
+    raw_payload = Column(JSONB, nullable=True)
+    tenant_id = Column(String(64), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+
 class OpsJobRun(Base):
     __tablename__ = "ops_job_run"
 

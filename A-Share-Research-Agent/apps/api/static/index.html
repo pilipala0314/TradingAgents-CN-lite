@@ -211,6 +211,47 @@
         </div>
       </section>
 
+      <!-- ②b 资金流（个股 + 大盘） -->
+      <section class="card signals-collapsible" data-section-key="stock-capital-flow">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">②b</span> 资金流 <span class="muted" style="font-weight:400">主力净流入 · 超大单 · 大单</span></h2>
+          <button id="stock-cf-refresh" class="signal-btn-secondary" style="padding:4px 10px; font-size:12px;">↻ 刷新</button>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">回溯天数：
+            <select id="stock-cf-days">
+              <option value="7">7</option>
+              <option value="14">14</option>
+              <option value="30" selected>30</option>
+              <option value="60">60</option>
+            </select>
+          </label>
+        </div>
+        <div id="stock-cf-kpis" class="signal-kpis" style="grid-template-columns: repeat(4, 1fr);">加载中…</div>
+        <div id="stock-cf-market" class="muted" style="font-size:12px; margin: 8px 0;"></div>
+        <canvas id="stock-cf-chart" height="120"></canvas>
+        <div id="stock-cf-table" class="table-wrap" style="margin-top: 12px;"></div>
+      </section>
+
+      <!-- ②c 财务指标 -->
+      <section class="card signals-collapsible" data-section-key="stock-financial">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">②c</span> 财务指标 <span class="muted" style="font-weight:400">最近 8 个报告期关键指标</span></h2>
+          <button id="stock-fin-refresh" class="signal-btn-secondary" style="padding:4px 10px; font-size:12px;">↻ 刷新</button>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">报告期数：
+            <select id="stock-fin-periods">
+              <option value="4">4</option>
+              <option value="8" selected>8</option>
+              <option value="12">12</option>
+            </select>
+          </label>
+        </div>
+        <div id="stock-fin-table" class="table-wrap">加载中…</div>
+        <div id="stock-fin-meta" class="muted" style="font-size:11px; margin-top:6px;"></div>
+      </section>
+
       <!-- ③ 最近公告（折叠） -->
       <section class="card signals-collapsible" data-section-key="stock-announcements">
         <div class="signal-section-head">

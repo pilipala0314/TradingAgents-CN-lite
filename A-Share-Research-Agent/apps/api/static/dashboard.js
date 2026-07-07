@@ -603,6 +603,10 @@ async function loadStock(code, options) {
   }
   // 并行拉决策钻取（不阻塞主视图）
   loadStockDecisions(code).catch((e) => console.warn("loadStockDecisions failed:", e));
+  // P2-T2: 并行拉资金流
+  loadStockCapitalFlow(code).catch((e) => console.warn("loadStockCapitalFlow failed:", e));
+  // P2-T4: 并行拉财务指标
+  loadStockFinancial(code).catch((e) => console.warn("loadStockFinancial failed:", e));
 }
 
 // ── P0-T11 决策钻取（stock tab ②） ─────────────────────────────
@@ -721,6 +725,192 @@ async function loadStockDecisions(code) {
       决策钻取失败: ${e.message}<br/>
       <span style="font-size:11px;color:var(--text-muted);">接口 GET /api/dashboard/stock/{code}/decisions</span>
     </div>`;
+  }
+}
+
+// ── P2-T2 资金流（stock tab ②b） ─────────────────────────────
+
+let _stockCfChart = null;
+
+function _formatYi(v) {
+  if (v === null || v === undefined) return "—";
+  const n = Number(v);
+  if (Number.isNaN(n)) return "—";
+  if (Math.abs(n) >= 1e8) return (n / 1e8).toFixed(2) + " 亿";
+  if (Math.abs(n) >= 1e4) return (n / 1e4).toFixed(2) + " 万";
+  return n.toFixed(0);
+}
+
+function _colorForFlow(v) {
+  if (v === null || v === undefined) return "#94a3b8";
+  return Number(v) >= 0 ? "#4ade80" : "#f87171";
+}
+
+async function loadStockCapitalFlow(code) {
+  const kpisEl = document.getElementById("stock-cf-kpis");
+  const marketEl = document.getElementById("stock-cf-market");
+  const tableEl = document.getElementById("stock-cf-table");
+  const daysEl = document.getElementById("stock-cf-days");
+  if (!kpisEl) return;
+  if (!code || !/^\d{6}$/.test(code)) {
+    kpisEl.innerHTML = '<div class="muted">请输入 6 位股票代码</div>';
+    return;
+  }
+  const days = daysEl ? daysEl.value : "30";
+  kpisEl.innerHTML = '<div class="muted">加载资金流中…</div>';
+  try {
+    const data = await fetchJSON(`/api/dashboard/stock/${code}/capital_flow?days=${days}`);
+    const summary = data.summary || {};
+    const individual = Array.isArray(data.individual) ? data.individual : [];
+    const market = data.market || {};
+
+    // 1) KPI 卡片
+    const kpi = (label, value, color) => `
+      <div class="signal-kpi" style="border-color:${color || "var(--border)"};">
+        <div class="signal-kpi-label">${label}</div>
+        <div class="signal-kpi-value" style="color:${color || "var(--text)"};">${value}</div>
+      </div>`;
+    kpisEl.innerHTML = [
+      kpi("主力净流入 (最新)", _formatYi(summary.main_force_net), _colorForFlow(summary.main_force_net)),
+      kpi("超大单净流入", _formatYi(summary.super_large_net), _colorForFlow(summary.super_large_net)),
+      kpi("大单净流入", _formatYi(summary.large_net), _colorForFlow(summary.large_net)),
+      kpi("大盘主力净流入", _formatYi((market.main_force || {}).net_inflow), _colorForFlow((market.main_force || {}).net_inflow)),
+    ].join("");
+
+    // 2) 大盘上下文
+    if (marketEl) {
+      const m1 = market.main_force || {};
+      const m2 = market.northbound || {};
+      marketEl.innerHTML = `大盘 · 主力 <b style="color:${_colorForFlow(m1.net_inflow)}">${_formatYi(m1.net_inflow)}</b> · 北向 <b style="color:${_colorForFlow(m2.net_inflow)}">${_formatYi(m2.net_inflow)}</b> (${m1.date || m2.date || "—"})`;
+    }
+
+    // 3) 历史折线（按日期聚合净流入）
+    const byDate = {};
+    for (const r of individual) {
+      if (r.flow_type !== "individual_main_force") continue;
+      const d = r.date;
+      if (!d) continue;
+      if (!byDate[d]) byDate[d] = 0;
+      byDate[d] += Number(r.net_inflow || 0);
+    }
+    const sortedDates = Object.keys(byDate).sort();
+    const labels = sortedDates;
+    const values = sortedDates.map((d) => byDate[d]);
+
+    const canvas = document.getElementById("stock-cf-chart");
+    if (canvas && typeof Chart !== "undefined") {
+      if (_stockCfChart) {
+        _stockCfChart.data.labels = labels;
+        _stockCfChart.data.datasets[0].data = values;
+        _stockCfChart.update();
+      } else {
+        _stockCfChart = new Chart(canvas.getContext("2d"), {
+          type: "bar",
+          data: {
+            labels,
+            datasets: [{
+              label: "主力净流入",
+              data: values,
+              backgroundColor: values.map((v) => v >= 0 ? "rgba(74,222,128,0.7)" : "rgba(248,113,113,0.7)"),
+              borderColor: values.map((v) => v >= 0 ? "#4ade80" : "#f87171"),
+              borderWidth: 1,
+            }],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { ticks: { color: "#94a3b8", maxRotation: 0 }, grid: { color: "rgba(148,163,184,0.1)" } },
+              y: { ticks: { color: "#94a3b8", callback: (v) => _formatYi(v) }, grid: { color: "rgba(148,163,184,0.1)" } },
+            },
+          },
+        });
+      }
+    }
+
+    // 4) 表格（最近 14 天）
+    if (tableEl) {
+      const recent = individual
+        .filter((r) => r.flow_type === "individual_main_force")
+        .slice(0, 14);
+      if (recent.length === 0) {
+        tableEl.innerHTML = `<div class="muted" style="padding:16px;">无个股资金流数据（请先跑 ETL 拉资金流）</div>`;
+      } else {
+        tableEl.innerHTML = `<table class="data-table" style="width:100%;">
+          <thead><tr>
+            <th>日期</th><th>主力净流入</th><th>超大单</th><th>大单</th>
+          </tr></thead>
+          <tbody>${recent.map((r) => `<tr>
+            <td>${r.date}</td>
+            <td style="color:${_colorForFlow(r.net_inflow)}">${_formatYi(r.net_inflow)}</td>
+            <td style="color:${_colorForFlow(r.gross_inflow)}">${_formatYi(r.gross_inflow)}</td>
+            <td style="color:${_colorForFlow(r.gross_outflow)}">${_formatYi(r.gross_outflow)}</td>
+          </tr>`).join("")}</tbody></table>`;
+      }
+    }
+  } catch (e) {
+    kpisEl.innerHTML = `<div class="muted" style="color:#f87171;">资金流拉取失败: ${e.message}</div>`;
+  }
+}
+
+// ── P2-T4 财务指标（stock tab ②c） ─────────────────────────────
+
+async function loadStockFinancial(code) {
+  const tblEl = document.getElementById("stock-fin-table");
+  const metaEl = document.getElementById("stock-fin-meta");
+  if (!tblEl) return;
+  if (!code || !/^\d{6}$/.test(code)) {
+    tblEl.innerHTML = '<div class="muted">请输入 6 位股票代码</div>';
+    return;
+  }
+  const periodsEl = document.getElementById("stock-fin-periods");
+  const periods = periodsEl ? periodsEl.value : "8";
+  tblEl.innerHTML = '<div class="muted">加载财务指标中…</div>';
+  try {
+    const data = await fetchJSON(`/api/dashboard/stock/${code}/financial?periods=${periods}`);
+    const periods = Array.isArray(data.periods) ? data.periods : [];
+    const table = Array.isArray(data.table) ? data.table : [];
+    const names = data.indicator_names || {};
+
+    if (table.length === 0) {
+      tblEl.innerHTML = `<div class="muted" style="padding:16px;">无财务指标数据（请先跑 ETL 拉财报）</div>`;
+      if (metaEl) metaEl.textContent = "";
+      return;
+    }
+    // 透视：行=指标，列=报告期
+    const headers = ["指标", ...periods];
+    const headHtml = `<tr>${headers.map((h, i) =>
+      `<th${i === 0 ? "" : ' style="text-align:right;"'}>${i === 0 ? h : h}</th>`
+    ).join("")}</tr>`;
+    const bodyHtml = table.map((row) => {
+      const code = row.indicator;
+      const name = names[code] || code;
+      const cells = periods.map((p) => {
+        const v = row[p];
+        if (v === null || v === undefined) return `<td style="text-align:right; color:#94a3b8;">—</td>`;
+        // 大数格式化
+        let display;
+        if (Math.abs(v) >= 1e8) display = (v / 1e8).toFixed(2) + "亿";
+        else if (Math.abs(v) >= 1e4) display = (v / 1e4).toFixed(2) + "万";
+        else display = v.toFixed(2);
+        return `<td style="text-align:right;">${display}</td>`;
+      }).join("");
+      return `<tr><td><b>${code}</b> <span class="muted" style="font-size:11px;">${name}</span></td>${cells}</tr>`;
+    }).join("");
+
+    tblEl.innerHTML = `
+      <div style="overflow-x:auto;">
+        <table class="data-table" style="width:100%; min-width:600px;">
+          <thead>${headHtml}</thead>
+          <tbody>${bodyHtml}</tbody>
+        </table>
+      </div>`;
+    if (metaEl) {
+      metaEl.textContent = `${data.name || code} · ${table.length} 个指标 × ${periods.length} 个报告期 · 数据源 fact_financial_report`;
+    }
+  } catch (e) {
+    tblEl.innerHTML = `<div class="muted" style="color:#f87171;">财务指标拉取失败: ${e.message}</div>`;
   }
 }
 
@@ -3599,6 +3789,36 @@ document.addEventListener("DOMContentLoaded", () => {
     decRefresh.addEventListener("click", () => {
       const code = document.getElementById("stock-code").value.trim();
       loadStockDecisions(code);
+    });
+  }
+  // P2-T2 资金流刷新按钮
+  const cfRefresh = document.getElementById("stock-cf-refresh");
+  if (cfRefresh) {
+    cfRefresh.addEventListener("click", () => {
+      const code = document.getElementById("stock-code").value.trim();
+      loadStockCapitalFlow(code);
+    });
+  }
+  const cfDays = document.getElementById("stock-cf-days");
+  if (cfDays) {
+    cfDays.addEventListener("change", () => {
+      const code = document.getElementById("stock-code").value.trim();
+      loadStockCapitalFlow(code);
+    });
+  }
+  // P2-T4 财务指标刷新
+  const finRefresh = document.getElementById("stock-fin-refresh");
+  if (finRefresh) {
+    finRefresh.addEventListener("click", () => {
+      const code = document.getElementById("stock-code").value.trim();
+      loadStockFinancial(code);
+    });
+  }
+  const finPeriods = document.getElementById("stock-fin-periods");
+  if (finPeriods) {
+    finPeriods.addEventListener("change", () => {
+      const code = document.getElementById("stock-code").value.trim();
+      loadStockFinancial(code);
     });
   }
   const decLookback = document.getElementById("stock-decision-lookback");

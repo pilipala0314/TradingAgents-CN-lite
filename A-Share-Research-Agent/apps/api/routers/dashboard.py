@@ -233,6 +233,223 @@ async def stock_decisions(
     return result
 
 
+# ── P2-T2 资金流端点 ─────────────────────────────
+
+
+@router.get("/stock/{code}/capital_flow")
+async def stock_capital_flow(
+    code: str = Path(..., description="6 位股票代码，如 600519"),
+    days: int = Query(30, ge=1, le=180, description="回溯窗口（天）"),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """P2-T2: 该股最近 N 天资金流（个股 + 市场）数据。
+
+    返回：
+    - security_id / name
+    - individual: 该股每日 individual_main_force 流（日期 → 净流入/超大单/大单）
+    - market: 大盘最近 1 笔 main_force / northbound 净流入
+    - summary: KPI 汇总（最新一日净流入、超大单、大单）
+    """
+    from datetime import datetime, timedelta
+    from sqlalchemy import select
+
+    from core.enums import EntityType, FlowType, WindowType
+    from models.dimensions import DimSecurity
+    from models.facts import FactCapitalFlow
+
+    result: dict[str, Any] = {
+        "code": code,
+        "security_id": None,
+        "name": None,
+        "individual": [],
+        "market": {},
+        "summary": {},
+        "errors": {},
+    }
+    # 1) 反查 security_id
+    try:
+        sec_q = select(DimSecurity).where(DimSecurity.symbol == code)
+        sec_row = (await session.execute(sec_q)).scalar_one_or_none()
+        if sec_row:
+            result["security_id"] = str(sec_row.security_id)
+            result["name"] = sec_row.name
+    except Exception as exc:
+        result["errors"]["security_lookup"] = f"{type(exc).__name__}: {exc}"
+
+    # 2) 个股资金流（最近 days 天）
+    if result["security_id"]:
+        try:
+            from uuid import UUID
+            from sqlalchemy import and_
+            cutoff = (datetime.utcnow() - timedelta(days=days)).date()
+            q = (
+                select(FactCapitalFlow)
+                .where(
+                    and_(
+                        FactCapitalFlow.entity_type == EntityType.SECURITY.value,
+                        FactCapitalFlow.entity_id == UUID(result["security_id"]),
+                        FactCapitalFlow.business_date >= cutoff,
+                    )
+                )
+                .order_by(FactCapitalFlow.business_date.desc())
+            )
+            rows = (await session.execute(q)).scalars().all()
+            for r in rows:
+                result["individual"].append({
+                    "date": r.business_date.isoformat() if r.business_date else None,
+                    "flow_type": r.flow_type,
+                    "net_inflow": float(r.net_inflow) if r.net_inflow is not None else None,
+                    "gross_inflow": float(r.gross_inflow) if r.gross_inflow is not None else None,
+                    "gross_outflow": float(r.gross_outflow) if r.gross_outflow is not None else None,
+                })
+        except Exception as exc:
+            result["errors"]["individual"] = f"{type(exc).__name__}: {exc}"
+
+    # 3) 大盘资金流（最近 1 笔 main_force / northbound）
+    try:
+        from core.identifiers import MARKET_ENTITY_ID
+        for ft in [FlowType.MAIN_FORCE.value, FlowType.NORTHBOUND.value]:
+            q = (
+                select(FactCapitalFlow)
+                .where(
+                    FactCapitalFlow.entity_type == EntityType.MARKET.value,
+                    FactCapitalFlow.entity_id == MARKET_ENTITY_ID,
+                    FactCapitalFlow.flow_type == ft,
+                )
+                .order_by(FactCapitalFlow.business_date.desc())
+                .limit(1)
+            )
+            r = (await session.execute(q)).scalars().first()
+            if r:
+                result["market"][ft] = {
+                    "date": r.business_date.isoformat() if r.business_date else None,
+                    "net_inflow": float(r.net_inflow) if r.net_inflow is not None else None,
+                    "gross_inflow": float(r.gross_inflow) if r.gross_inflow is not None else None,
+                }
+    except Exception as exc:
+        result["errors"]["market"] = f"{type(exc).__name__}: {exc}"
+
+    # 4) 汇总：最新一日的净流入 / 超大单 / 大单
+    if result["individual"]:
+        latest_ind = [r for r in result["individual"] if r["flow_type"] == "individual_main_force"]
+        if latest_ind:
+            latest = latest_ind[0]  # 已按日期 desc
+            result["summary"] = {
+                "date": latest["date"],
+                "main_force_net": latest["net_inflow"],
+                "super_large_net": latest["gross_inflow"],
+                "large_net": latest["gross_outflow"],
+            }
+
+    return result
+
+
+# ── P2-T4 财务指标端点 ─────────────────────────────
+
+
+@router.get("/stock/{code}/financial")
+async def stock_financial(
+    code: str = Path(..., description="6 位股票代码"),
+    periods: int = Query(8, ge=1, le=20, description="返回最近 N 个报告期"),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """P2-T4: 该股最近 N 个报告期的关键财务指标。
+
+    返回：
+    - security_id / name
+    - periods[]: 倒序报告期列表（每期 12 个指标）
+    - table: 透视表 (rows=指标, cols=报告期)
+    """
+    from sqlalchemy import select
+    from models.dimensions import DimSecurity
+    from models.facts import FactFinancialReport
+
+    result: dict[str, Any] = {
+        "code": code,
+        "security_id": None,
+        "name": None,
+        "periods": [],
+        "table": [],
+        "errors": {},
+    }
+
+    # 1) 反查
+    try:
+        sec_row = (
+            await session.execute(select(DimSecurity).where(DimSecurity.symbol == code))
+        ).scalar_one_or_none()
+        if sec_row:
+            result["security_id"] = str(sec_row.security_id)
+            result["name"] = sec_row.name
+    except Exception as exc:
+        result["errors"]["security_lookup"] = f"{type(exc).__name__}: {exc}"
+
+    if not result["security_id"]:
+        return result
+
+    # 2) 拉最近 N 期
+    try:
+        from uuid import UUID
+        sec_uuid = UUID(result["security_id"])
+        # 拉所有 (security_id, report_period, indicator_code, value)
+        q = (
+            select(
+                FactFinancialReport.report_period,
+                FactFinancialReport.indicator_code,
+                FactFinancialReport.indicator_name,
+                FactFinancialReport.value,
+                FactFinancialReport.unit,
+            )
+            .where(FactFinancialReport.security_id == sec_uuid)
+            .order_by(
+                FactFinancialReport.report_period.desc(),
+                FactFinancialReport.indicator_code.asc(),
+            )
+        )
+        rows = (await session.execute(q)).all()
+        # 透视：dict[period] -> dict[code] -> value
+        pivot: dict[str, dict[str, dict]] = {}
+        for period, code_, name, value, unit in rows:
+            ps = period.isoformat() if period else "unknown"
+            if ps not in pivot:
+                pivot[ps] = {}
+            pivot[ps][code_] = {
+                "value": float(value) if value is not None else None,
+                "name": name,
+                "unit": unit,
+            }
+        # 取最近 N 期
+        sorted_periods = sorted(pivot.keys(), reverse=True)[:periods]
+        result["periods"] = sorted_periods
+        # 透视表
+        all_codes: set[str] = set()
+        for p in sorted_periods:
+            all_codes.update(pivot[p].keys())
+        # 固定指标顺序（按 _INDICATOR_MAP 顺序）
+        from data_pipeline.providers.financial_report_provider import _INDICATOR_MAP
+        code_order = [c for c, _ in _INDICATOR_MAP.items() if False]  # 简化
+        # 实际：把 indicator_code 排序
+        sorted_codes = sorted(all_codes)
+        rows_table: list[dict[str, Any]] = []
+        for code_ in sorted_codes:
+            row: dict[str, Any] = {"indicator": code_}
+            for p in sorted_periods:
+                cell = pivot[p].get(code_)
+                row[p] = cell["value"] if cell else None
+            rows_table.append(row)
+        result["table"] = rows_table
+        # name_map
+        result["indicator_names"] = {
+            code_: pivot[sorted_periods[0]].get(code_, {}).get("name", code_)
+            for code_ in sorted_codes
+            if pivot.get(sorted_periods[0], {}).get(code_)
+        }
+    except Exception as exc:
+        result["errors"]["financial_query"] = f"{type(exc).__name__}: {exc}"
+
+    return result
+
+
 # ── P0-T12 申万行业热力图 ─────────────────────────────
 
 
