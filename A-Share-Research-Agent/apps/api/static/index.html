@@ -172,10 +172,40 @@
         <canvas id="kline-chart" height="160"></canvas>
       </section>
 
-      <!-- ② 最近公告（折叠） -->
+      <!-- ② 委员会决策依据（核心钻取） -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">②</span> 委员会决策依据 <span class="muted" style="font-weight:400">最近 30 天内涉及该股的 trace</span></h2>
+          <span class="muted stock-decision-count" id="stock-decision-count">—</span>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">回溯天数：
+            <select id="stock-decision-lookback">
+              <option value="7">7</option>
+              <option value="14">14</option>
+              <option value="30" selected>30</option>
+              <option value="60">60</option>
+            </select>
+          </label>
+          <label class="muted">最大条数：
+            <select id="stock-decision-limit">
+              <option value="5">5</option>
+              <option value="10" selected>10</option>
+              <option value="20">20</option>
+            </select>
+          </label>
+          <button id="stock-decision-refresh" class="signal-btn-secondary" style="padding:4px 10px; font-size:12px;">↻ 刷新</button>
+          <a id="stock-decision-link" href="#" class="muted" style="font-size:12px; text-decoration:none; margin-left:auto;">查看完整信号审计 →</a>
+        </div>
+        <div id="stock-decision-list" class="stock-decision-list">
+          <div class="muted" style="padding:24px; text-align:center;">输入股票代码后自动加载</div>
+        </div>
+      </section>
+
+      <!-- ③ 最近公告（折叠） -->
       <section class="card signals-collapsible" data-section-key="stock-announcements">
         <div class="signal-section-head">
-          <h2><span class="signal-num">②</span> 最近公告 <span class="muted" style="font-weight:400">数据源 cninfo · 巨潮资讯</span></h2>
+          <h2><span class="signal-num">③</span> 最近公告 <span class="muted" style="font-weight:400">数据源 cninfo · 巨潮资讯</span></h2>
         </div>
         <div id="stock-announcements" class="table-wrap"></div>
       </section>

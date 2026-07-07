@@ -501,6 +501,127 @@ async function loadStock(code, options) {
     document.getElementById("stock-quote").innerHTML =
       `<span class="meta">/api/dashboard/stock/${code} 失败: ${e.message}</span>`;
   }
+  // 并行拉决策钻取（不阻塞主视图）
+  loadStockDecisions(code).catch((e) => console.warn("loadStockDecisions failed:", e));
+}
+
+// ── P0-T11 决策钻取（stock tab ②） ─────────────────────────────
+
+function _renderRoleTag(role) {
+  if (role === "approved") {
+    return '<span class="stock-decision-role stock-decision-role-approved">APPROVED</span>';
+  }
+  if (role === "blocked") {
+    return '<span class="stock-decision-role stock-decision-role-blocked">BLOCKED</span>';
+  }
+  return '<span class="stock-decision-role" style="background:rgba(148,163,184,0.12);color:#94a3b8;">UNRELATED</span>';
+}
+
+function _renderEvidenceList(evidence) {
+  if (!Array.isArray(evidence) || evidence.length === 0) {
+    return '<div class="stock-decision-empty" style="padding:12px;font-size:12px;">无关联 evidence_refs</div>';
+  }
+  return `<div class="stock-decision-evidence">
+    <div class="stock-decision-evidence-title">evidence_refs · ${evidence.length}</div>
+    ${evidence
+      .map(
+        (e) =>
+          `<div class="stock-decision-evidence-item">· ${typeof e === "string" ? e : JSON.stringify(e)}</div>`,
+      )
+      .join("")}
+  </div>`;
+}
+
+function _renderDecisionRow(trace, idx) {
+  const role = trace.role || "unrelated";
+  const verdict = trace.verdict || "-";
+  const date = trace.business_date || "-";
+  const conf = Number(trace.confidence || 0);
+  const confPct = Math.max(0, Math.min(100, conf * 100));
+  const fallback = !!trace.fallback_used;
+  const rationale = trace.rationale || "(无 rationale)";
+  const evidence = trace.evidence_refs || [];
+  const llmError = trace.llm_error || "";
+  const modelVer = trace.model_version || "-";
+  const layer = trace.decision_layer || "committee";
+
+  return `<div class="stock-decision-row" data-idx="${idx}">
+    <div class="stock-decision-head" onclick="this.parentElement.classList.toggle('open')">
+      ${_renderRoleTag(role)}
+      <span class="stock-decision-verdict">${verdict}</span>
+      <span class="stock-decision-date">${date}</span>
+      <div class="stock-decision-confidence">
+        <span>置信 ${confPct.toFixed(0)}%</span>
+        <div class="stock-decision-confidence-bar">
+          <div class="stock-decision-confidence-fill ${fallback ? "fallback" : ""}" style="width:${confPct}%"></div>
+        </div>
+      </div>
+      ${fallback ? '<span class="stock-decision-tag stock-decision-tag-fallback">FALLBACK</span>' : ""}
+      <span class="stock-decision-toggle">▾</span>
+    </div>
+    <div class="stock-decision-body">
+      <div class="stock-decision-body-inner">
+        <div class="stock-decision-rationale">${rationale}</div>
+        ${_renderEvidenceList(evidence)}
+        ${llmError ? `<div class="stock-decision-llm-error">⚠ LLM 异常: ${llmError}</div>` : ""}
+        <div class="stock-decision-meta">
+          <span>layer: ${layer}</span>
+          <span>model: ${modelVer}</span>
+          <span>trace_id: ${(trace.trace_id || "-").slice(0, 8)}</span>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+async function loadStockDecisions(code) {
+  const listEl = document.getElementById("stock-decision-list");
+  const countEl = document.getElementById("stock-decision-count");
+  const linkEl = document.getElementById("stock-decision-link");
+  if (!listEl) return;
+  if (!code || !/^\d{6}$/.test(code)) {
+    listEl.innerHTML = '<div class="stock-decision-empty">请输入 6 位股票代码</div>';
+    if (countEl) countEl.textContent = "—";
+    return;
+  }
+  const lookbackEl = document.getElementById("stock-decision-lookback");
+  const limitEl = document.getElementById("stock-decision-limit");
+  const lookback = lookbackEl ? lookbackEl.value : "30";
+  const limit = limitEl ? limitEl.value : "10";
+  if (linkEl) linkEl.href = `/static/index.html?tab=signals&code=${code}`;
+  if (countEl) countEl.textContent = "加载中…";
+  listEl.innerHTML = '<div class="stock-decision-empty">正在拉取委员会 trace…</div>';
+  try {
+    const data = await fetchJSON(
+      `/api/dashboard/stock/${code}/decisions?lookback_days=${lookback}&limit=${limit}`,
+    );
+    const traces = Array.isArray(data.traces) ? data.traces : [];
+    const total = data.total_returned || traces.length;
+    if (countEl) {
+      countEl.textContent = `${data.name || code} · ${total} 条`;
+    }
+    if (traces.length === 0) {
+      listEl.innerHTML = `<div class="stock-decision-empty">
+        委员会 ${lookback} 天内未对该股做出涉及决策<br/>
+        <span style="font-size:11px;color:var(--text-muted);">可能原因：未到 run 窗口 / 委员会未启用 stock 层 / 数据未落库</span>
+      </div>`;
+      return;
+    }
+    const approved = traces.filter((t) => t.role === "approved").length;
+    const blocked = traces.filter((t) => t.role === "blocked").length;
+    const summary = `<div style="display:flex;gap:16px;font-size:12px;padding:0 4px 8px;color:var(--text-muted);">
+      <span>涉及 trace：<strong style="color:var(--text);">${total}</strong></span>
+      <span>批准：<strong style="color:#4ade80;">${approved}</strong></span>
+      <span>拦截：<strong style="color:#f87171;">${blocked}</strong></span>
+    </div>`;
+    listEl.innerHTML = summary + traces.map((t, i) => _renderDecisionRow(t, i)).join("");
+  } catch (e) {
+    if (countEl) countEl.textContent = "拉取失败";
+    listEl.innerHTML = `<div class="stock-decision-empty" style="color:#f87171;">
+      决策钻取失败: ${e.message}<br/>
+      <span style="font-size:11px;color:var(--text-muted);">接口 GET /api/dashboard/stock/{code}/decisions</span>
+    </div>`;
+  }
 }
 
 // ── 多股对比 ────────────────────────────────────────────────
@@ -2693,6 +2814,28 @@ document.addEventListener("DOMContentLoaded", () => {
     const days = parseInt(document.getElementById("kline-days").value, 10);
     loadStock(document.getElementById("stock-code").value.trim(), { metric, days });
   });
+  // P0-T11 决策钻取刷新按钮
+  const decRefresh = document.getElementById("stock-decision-refresh");
+  if (decRefresh) {
+    decRefresh.addEventListener("click", () => {
+      const code = document.getElementById("stock-code").value.trim();
+      loadStockDecisions(code);
+    });
+  }
+  const decLookback = document.getElementById("stock-decision-lookback");
+  if (decLookback) {
+    decLookback.addEventListener("change", () => {
+      const code = document.getElementById("stock-code").value.trim();
+      loadStockDecisions(code);
+    });
+  }
+  const decLimit = document.getElementById("stock-decision-limit");
+  if (decLimit) {
+    decLimit.addEventListener("change", () => {
+      const code = document.getElementById("stock-code").value.trim();
+      loadStockDecisions(code);
+    });
+  }
   document.getElementById("health-refresh").addEventListener("click", loadHealthDetail);
   document.getElementById("health-provider-filter").addEventListener("change", _renderFilteredTable);
   document.getElementById("health-method-filter").addEventListener("change", _renderFilteredTable);
