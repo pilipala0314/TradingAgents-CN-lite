@@ -3486,6 +3486,11 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("bt-reset").addEventListener("click", () => {
     _btInitStrategies().then(loadBacktestDefault);
   });
+  // P1-T4 多 run 对比
+  const btCmpLoad = document.getElementById("bt-compare-load");
+  if (btCmpLoad) btCmpLoad.addEventListener("click", loadRunComparison);
+  const btCmpClear = document.getElementById("bt-compare-clear");
+  if (btCmpClear) btCmpClear.addEventListener("click", clearRunCompareSelection);
 });
 
 // ── 回测 tab ─────────────────────────────────────────────────
@@ -3498,6 +3503,9 @@ let _bt4x30Chart = null;
 let _btHistory = [];
 let _btCurrentJobId = null;
 let _btPollTimer = null;
+let _btNavCompareChart = null;
+let _btMetricsCompareChart = null;
+let _btCompareSelected = new Set();
 
 async function _btInitStrategies() {
   try {
@@ -3995,6 +4003,172 @@ function _renderBtHistory(runs) {
       loadBtRunDetail(jid);
     });
   });
+  // P1-T4: 同步刷新 picker
+  _renderComparePicker(_btHistory);
+}
+
+// ── P1-T4 多 run 横向对比 ─────────────────────────
+
+function _renderComparePicker(runs) {
+  const el = document.getElementById("bt-compare-picker");
+  if (!el) return;
+  if (!runs || runs.length === 0) {
+    el.innerHTML = `<div class="muted">无历史 run 可选。请先点上方"历史"加载。</div>`;
+    return;
+  }
+  el.innerHTML = runs.map((r) => {
+    const checked = _btCompareSelected.has(r.job_id) ? "checked" : "";
+    const strat = (r.config_json && r.config_json.strategy_name) || "?";
+    const alpha = r.benchmark_alpha != null ? fmtNum(r.benchmark_alpha, 3) : "-";
+    return `<label style="display:flex; align-items:center; gap:6px; padding:4px 0; font-size:12px;">
+      <input type="checkbox" data-cmp-jid="${r.job_id}" ${checked} />
+      <code style="font-size:11px;">${(r.job_id || "").slice(0, 8)}…</code>
+      <span>${strat}</span>
+      <span class="muted">${r.business_date} α=${alpha}</span>
+    </label>`;
+  }).join("");
+  el.querySelectorAll("[data-cmp-jid]").forEach((cb) => {
+    cb.addEventListener("change", (e) => {
+      const jid = e.target.dataset.cmpJid;
+      if (e.target.checked) {
+        if (_btCompareSelected.size >= 5) {
+          e.target.checked = false;
+          alert("最多选 5 个 run");
+          return;
+        }
+        _btCompareSelected.add(jid);
+      } else {
+        _btCompareSelected.delete(jid);
+      }
+      _renderCompareStatus();
+    });
+  });
+  _renderCompareStatus();
+}
+
+function _renderCompareStatus() {
+  const el = document.getElementById("bt-compare-status");
+  if (el) el.textContent = `已选 ${_btCompareSelected.size} / 5 个 run`;
+}
+
+function clearRunCompareSelection() {
+  _btCompareSelected.clear();
+  _renderComparePicker(_btHistory);
+  document.getElementById("bt-compare-table").innerHTML = "";
+  document.getElementById("bt-compare-status").textContent = "已清空";
+  if (_btNavCompareChart) { _btNavCompareChart.destroy(); _btNavCompareChart = null; }
+  if (_btMetricsCompareChart) { _btMetricsCompareChart.destroy(); _btMetricsCompareChart = null; }
+}
+
+async function loadRunComparison() {
+  if (_btCompareSelected.size === 0) {
+    alert("请先勾选至少 1 个 run（最多 5）");
+    return;
+  }
+  const ids = Array.from(_btCompareSelected);
+  const statusEl = document.getElementById("bt-compare-status");
+  if (statusEl) statusEl.textContent = `加载中... (${ids.length} 个)`;
+  try {
+    const data = await fetchJSON(`/v1/backtest/runs/compare?ids=${ids.join(",")}`);
+    if (statusEl) {
+      statusEl.textContent = `已对比 ${data.count} 个 run，缺失 ${data.missing.length} 个`;
+    }
+    _renderCompareTable(data.runs);
+    _renderCompareCharts(data.runs);
+  } catch (e) {
+    if (statusEl) statusEl.textContent = `加载失败：${e.message}`;
+  }
+}
+
+function _renderCompareTable(runs) {
+  const el = document.getElementById("bt-compare-table");
+  if (!el) return;
+  if (!runs || runs.length === 0) {
+    el.innerHTML = `<p class="muted">无数据</p>`;
+    return;
+  }
+  const rows = runs.map((r) => `<tr>
+    <td><code style="font-size:11px;">${(r.job_id || "").slice(0, 8)}…</code></td>
+    <td>${r.strategy || "?"}</td>
+    <td>${r.universe || "—"}</td>
+    <td>${r.benchmark || "—"}</td>
+    <td>${r.business_date || "—"}</td>
+    <td>${fmtNum(r.alpha, 4)}</td>
+    <td>${fmtNum(r.beta, 3)}</td>
+    <td>${fmtNum(r.sharpe, 2)}</td>
+    <td>${fmtNum(r.max_drawdown, 4)}</td>
+    <td>${fmtNum(r.total_return, 4)}</td>
+    <td>${fmtNum(r.turnover, 3)}</td>
+  </tr>`).join("");
+  el.innerHTML = `<table>
+    <thead><tr>
+      <th>job_id</th><th>策略</th><th>universe</th><th>基准</th><th>日期</th>
+      <th>α</th><th>β</th><th>Sharpe</th><th>最大回撤</th><th>总收益</th><th>换手</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function _renderCompareCharts(runs) {
+  if (!runs || runs.length === 0) return;
+  // nav 曲线：对齐到第一个 run 的日期轴
+  const baseDates = (runs[0].nav_curve || []).map((p) => p.date);
+  const palette = [
+    "rgba(56, 189, 248, 1)", "rgba(251, 146, 60, 1)",
+    "rgba(74, 222, 128, 1)", "rgba(244, 114, 182, 1)",
+    "rgba(167, 139, 250, 1)",
+  ];
+  const navDatasets = runs.map((r, i) => {
+    const map = new Map((r.nav_curve || []).map((p) => [p.date, p.nav]));
+    return {
+      label: `${(r.strategy || "?")} · ${(r.job_id || "").slice(0, 8)}`,
+      data: baseDates.map((d) => map.has(d) ? map.get(d) : null),
+      borderColor: palette[i % palette.length],
+      backgroundColor: palette[i % palette.length].replace(", 1)", ", 0.1)"),
+      spanGaps: true,
+      fill: false,
+      pointRadius: 0,
+      tension: 0.15,
+    };
+  });
+  const navCanvas = document.getElementById("bt-compare-nav-chart");
+  if (navCanvas) {
+    if (_btNavCompareChart) _btNavCompareChart.destroy();
+    _btNavCompareChart = new Chart(navCanvas, {
+      type: "line",
+      data: { labels: baseDates, datasets: navDatasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { y: { beginAtZero: false } },
+        plugins: { legend: { position: "bottom" } },
+      },
+    });
+  }
+  // 柱状对比图：α / β / Sharpe 三组
+  const labels = runs.map((r) => (r.strategy || "?") + "·" + (r.job_id || "").slice(0, 6));
+  const mkBar = (label, vals, color) => ({
+    label, data: vals, backgroundColor: color, borderRadius: 4,
+  });
+  const metricsCanvas = document.getElementById("bt-compare-metrics-chart");
+  if (metricsCanvas) {
+    if (_btMetricsCompareChart) _btMetricsCompareChart.destroy();
+    _btMetricsCompareChart = new Chart(metricsCanvas, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          mkBar("α", runs.map((r) => r.alpha ?? 0), "rgba(56, 189, 248, 0.7)"),
+          mkBar("β", runs.map((r) => r.beta ?? 0), "rgba(251, 146, 60, 0.7)"),
+          mkBar("Sharpe", runs.map((r) => r.sharpe ?? 0), "rgba(74, 222, 128, 0.7)"),
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: { y: { beginAtZero: true } },
+        plugins: { legend: { position: "bottom" } },
+      },
+    });
+  }
 }
 
 async function loadBtRunDetail(jobId) {

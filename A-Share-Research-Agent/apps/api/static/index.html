@@ -788,6 +788,36 @@
         </div>
         <div id="bt-history-table" class="table-wrap"></div>
       </section>
+
+      <!-- ⑨ 多 run 横向对比 (P1-T4) -->
+      <section class="card signals-collapsible collapsed" data-section-key="bt-compare">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">⑨</span> 多 run 横向对比</h2>
+          <span class="muted">最多 5 个 run 关键指标 + nav 曲线叠加</span>
+        </div>
+        <div class="form-row" style="margin-bottom: 12px; align-items: flex-start;">
+          <div style="flex:1;">
+            <label class="muted">从历史 run 选择（多选，最多 5）：</label>
+            <div id="bt-compare-picker" class="muted" style="max-height:180px; overflow:auto; border:1px solid var(--border); border-radius:6px; padding:8px;">
+              请先点上方"历史"加载 run 列表，再勾选。
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:6px; min-width:120px;">
+            <button id="bt-compare-load" class="btn btn-primary" type="button">加载对比</button>
+            <button id="bt-compare-clear" class="btn" type="button">清空选择</button>
+          </div>
+        </div>
+        <div id="bt-compare-status" class="muted" style="margin-bottom: 8px;"></div>
+        <!-- ① 关键指标对比表 -->
+        <h3 style="margin: 12px 0 4px; font-size: 13px; color: var(--text-muted);">① 关键指标对比</h3>
+        <div id="bt-compare-table" class="table-wrap"></div>
+        <!-- ② nav 曲线叠加图 -->
+        <h3 style="margin: 16px 0 4px; font-size: 13px; color: var(--text-muted);">② 净值曲线叠加</h3>
+        <div style="height: 320px;"><canvas id="bt-compare-nav-chart"></canvas></div>
+        <!-- ③ alpha/beta/sharpe 柱状对比图 -->
+        <h3 style="margin: 16px 0 4px; font-size: 13px; color: var(--text-muted);">③ 关键参数柱状对比</h3>
+        <div style="height: 260px;"><canvas id="bt-compare-metrics-chart"></canvas></div>
+      </section>
     </div>
 
     <!-- Tab: 数据源健康监控（告警） -->
