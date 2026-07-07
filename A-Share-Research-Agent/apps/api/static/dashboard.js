@@ -1976,6 +1976,19 @@ function _renderFallbackSummary(rows) {
   `;
 }
 
+// P2-T8: A/B test — model version 颜色 helper
+const _MODEL_COLOR_PALETTE = [
+  "#a78bfa", "#34d399", "#fbbf24", "#f472b6", "#60a5fa",
+  "#fb7185", "#a3e635", "#22d3ee", "#fb923c", "#c084fc",
+];
+function _modelColor(modelVer) {
+  if (!modelVer || modelVer === "-") return "rgba(148,163,184,0.4)";
+  // 简单 hash
+  let h = 0;
+  for (let i = 0; i < modelVer.length; i++) h = ((h << 5) - h + modelVer.charCodeAt(i)) | 0;
+  return _MODEL_COLOR_PALETTE[Math.abs(h) % _MODEL_COLOR_PALETTE.length];
+}
+
 function _renderTraceDiffMatrix(rows) {
   const el = document.getElementById("signals-trace-diff-matrix");
   if (!el) return;
@@ -2265,7 +2278,7 @@ function _renderTraceCompare(rows) {
         <td><code>${_escapeHtml(String(trace.trace_id || "").slice(0, 8))}</code></td>
         <td>${_escapeHtml(trace.verdict || "-")}</td>
         <td>${(Number(trace.confidence || 0) * 100).toFixed(1)}%</td>
-        <td>${_escapeHtml(trace.model_version || "-")}</td>
+        <td><span class="badge" style="background:${_modelColor(trace.model_version)}22; color:${_modelColor(trace.model_version)}; border:1px solid ${_modelColor(trace.model_version)}55; font-family:var(--font-mono); font-size:11px;">${_escapeHtml(trace.model_version || "-")}</span></td>
         <td>${trace.fallback_used ? '<span class="badge warn">fallback</span>' : '<span class="badge ok">llm</span>'}</td>
         <td>${_escapeHtml(trace.market_regime || "-")}</td>
         <td>${_approvedCountForTrace(trace)}</td>
@@ -3818,6 +3831,9 @@ function switchTab(tabName) {
     if (!_macroCache) loadMacro();
   } else if (tabName === "watchlist") {
     if (!_watchlistCache) loadWatchlist();
+  } else if (tabName === "models") {
+    // P2-T10: 模型管理 tab
+    if (!_modelsCache) loadModels();
   }
   if (tabName !== "topology") stopTopologyAutoRefresh();
   if (tabName !== "signals") stopSchedulerAutoRefresh();
@@ -5799,6 +5815,309 @@ function bindTopologyEvents() {
 }
 
 // ════════════════════════════════════════════════════════════════
+// P2-T10 模型管理（admin tab） — 配置驱动 A/B 的可视化操作
+// ════════════════════════════════════════════════════════════════
+
+let _modelsCache = null;          // 最近一次拉取的 items
+let _modelsEditingId = null;      // 当前正在编辑的 model_id
+
+async function loadModels() {
+  const roleFilterEl = document.getElementById("models-role-filter");
+  const role = roleFilterEl ? roleFilterEl.value : "";
+  const url = role ? `/api/admin/models?role=${encodeURIComponent(role)}` : "/api/admin/models";
+  try {
+    const r = await fetch(url);
+    if (!r.ok) {
+      document.getElementById("models-table").innerHTML =
+        `<p class="muted">加载失败：HTTP ${r.status}（请确认后端服务正常）</p>`;
+      return;
+    }
+    const data = await r.json();
+    _modelsCache = data.items || [];
+    _refreshModelsRoleFilter(_modelsCache);
+    _renderModelsKpis(_modelsCache);
+    _renderModelsTable(_modelsCache);
+  } catch (e) {
+    document.getElementById("models-table").innerHTML =
+      `<p class="muted">加载失败：${e.message || e}</p>`;
+  }
+}
+
+function _refreshModelsRoleFilter(items) {
+  const el = document.getElementById("models-role-filter");
+  if (!el) return;
+  const current = el.value;
+  const roles = Array.from(new Set(items.map((m) => m.role))).sort();
+  // 保留 "全部 role"
+  el.innerHTML =
+    `<option value="">全部 role（${roles.length}）</option>` +
+    roles
+      .map(
+        (r) =>
+          `<option value="${r}"${
+            r === current ? " selected" : ""
+          }>${r}</option>`,
+      )
+      .join("");
+}
+
+function _renderModelsKpis(items) {
+  const el = document.getElementById("models-active-kpis");
+  if (!el) return;
+  const total = items.length;
+  const active = items.filter((m) => m.is_active).length;
+  const roles = new Set(items.map((m) => m.role)).size;
+  const latest = items
+    .map((m) => m.updated_at)
+    .filter(Boolean)
+    .sort()
+    .pop();
+  el.innerHTML = `
+    <div class="signal-kpi"><div class="signal-kpi-label">模型总数</div><div class="signal-kpi-value">${total}</div></div>
+    <div class="signal-kpi"><div class="signal-kpi-label">Active 模型</div><div class="signal-kpi-value" style="color:#fbbf24;">${active}</div></div>
+    <div class="signal-kpi"><div class="signal-kpi-label">Role 数</div><div class="signal-kpi-value">${roles}</div></div>
+    <div class="signal-kpi"><div class="signal-kpi-label">最近更新</div><div class="signal-kpi-value" style="font-size:14px;">${
+      latest ? new Date(latest).toLocaleString("zh-CN") : "—"
+    }</div></div>`;
+}
+
+function _renderModelsTable(items) {
+  const el = document.getElementById("models-table");
+  if (!el) return;
+  if (!items.length) {
+    el.innerHTML = `<p class="muted" style="padding:24px; text-align:center;">暂无模型。点击右上"注册新模型"开始。</p>`;
+    return;
+  }
+  // 按 role 分组（active 排前）
+  const grouped = {};
+  for (const m of items) {
+    if (!grouped[m.role]) grouped[m.role] = [];
+    grouped[m.role].push(m);
+  }
+  const roles = Object.keys(grouped).sort();
+  const sections = roles
+    .map((role) => {
+      const rows = grouped[role]
+        .sort((a, b) => (b.is_active - a.is_active) || (b.version - a.version))
+        .map((m) => _renderModelsRow(m))
+        .join("");
+      const roleActive = grouped[m_lookupActive(grouped, role)]?.name || "—";
+      return `
+        <div style="margin-bottom: 20px;">
+          <h3 style="margin: 8px 0; color: var(--text); font-size: 14px;">
+            role = <code style="color:#60a5fa;">${role}</code>
+            <span class="muted" style="font-weight:400; font-size:12px; margin-left: 8px;">
+              ${grouped[role].length} 个版本 · active = ${roleActive}
+            </span>
+          </h3>
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>name</th><th>version</th><th>provider/name</th>
+                <th>weight</th><th>状态</th><th>updated_at</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    })
+    .join("");
+  el.innerHTML = sections;
+}
+
+function m_lookupActive(grouped, role) {
+  const idx = grouped[role].findIndex((x) => x.is_active);
+  return idx >= 0 ? idx : 0;
+}
+
+function _renderModelsRow(m) {
+  const activeStyle = m.is_active
+    ? ' style="background: rgba(251, 191, 36, 0.08); border-left: 3px solid #fbbf24;"'
+    : "";
+  const statusBadge = m.is_active
+    ? '<span class="signal-badge" style="background:linear-gradient(135deg,#fbbf24,#f59e0b); color:#000; padding:2px 8px; border-radius:4px; font-size:11px;">✓ ACTIVE</span>'
+    : '<span class="muted" style="font-size:11px;">inactive</span>';
+  const provider = m.model_provider || "—";
+  const modelName = m.model_name || "—";
+  const configHas = m.config_json ? "有" : "—";
+  return `
+    <tr${activeStyle}>
+      <td><code style="color:#a78bfa;">#${m.model_id}</code></td>
+      <td><b>${m.name}</b>${m.description ? `<br><span class="muted" style="font-size:11px;">${m.description}</span>` : ""}</td>
+      <td>v${m.version}</td>
+      <td>${provider} <span class="muted">/</span> ${modelName}</td>
+      <td>${(m.weight ?? 1.0).toFixed(2)} <span class="muted" style="font-size:10px;">(config: ${configHas})</span></td>
+      <td>${statusBadge}</td>
+      <td class="muted" style="font-size:11px;">${m.updated_at ? new Date(m.updated_at).toLocaleString("zh-CN") : "—"}</td>
+      <td>
+        <button class="signal-btn-ghost" style="padding:3px 8px; font-size:11px;" onclick="activateModel(${m.model_id})">${m.is_active ? "重激活" : "设为 active"}</button>
+        <button class="signal-btn-ghost" style="padding:3px 8px; font-size:11px;" onclick="editModel(${m.model_id})">修改</button>
+        <button class="signal-btn-ghost" style="padding:3px 8px; font-size:11px; color:#fb7185;" onclick="deleteModel(${m.model_id}, '${(m.name || "").replace(/'/g, "&#39;")}')">停用</button>
+      </td>
+    </tr>`;
+}
+
+async function activateModel(modelId) {
+  if (!confirm(`确定将模型 #${modelId} 切换为 active？\n（同一 role 其它 active 将自动取消）`)) return;
+  try {
+    const r = await fetch(`/api/admin/models/${modelId}/activate`, { method: "POST" });
+    if (!r.ok) {
+      const t = await r.text();
+      alert(`激活失败：${t}`);
+      return;
+    }
+    await loadModels();
+  } catch (e) {
+    alert(`激活失败：${e.message || e}`);
+  }
+}
+
+function editModel(modelId) {
+  const m = (_modelsCache || []).find((x) => x.model_id === modelId);
+  if (!m) {
+    alert("未在缓存中找到该模型，请先刷新");
+    return;
+  }
+  _modelsEditingId = modelId;
+  document.getElementById("models-edit-target").innerText =
+    `#${m.model_id} · ${m.name} · ${m.role} v${m.version}`;
+  document.getElementById("models-edit-config").value = m.config_json
+    ? JSON.stringify(m.config_json, null, 2)
+    : "{}";
+  document.getElementById("models-edit-weight").value = (m.weight ?? 1.0).toFixed(2);
+  document.getElementById("models-edit-desc").value = m.description || "";
+  document.getElementById("models-edit-section").style.display = "";
+  // 平滑滚动到编辑区
+  document
+    .getElementById("models-edit-section")
+    .scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function saveEdit() {
+  if (!_modelsEditingId) {
+    alert("未选择要修改的模型");
+    return;
+  }
+  const id = _modelsEditingId;
+  let configJson = null;
+  const configText = document.getElementById("models-edit-config").value.trim();
+  if (configText && configText !== "{}") {
+    try {
+      configJson = JSON.parse(configText);
+    } catch (e) {
+      alert(`config_json 不是合法 JSON：${e.message}`);
+      return;
+    }
+  }
+  const weight = parseFloat(document.getElementById("models-edit-weight").value);
+  if (Number.isNaN(weight)) {
+    alert("weight 必须是数字");
+    return;
+  }
+  const description = document.getElementById("models-edit-desc").value;
+  try {
+    const r = await fetch(`/api/admin/models/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        config_json: configJson,
+        weight: weight,
+        description: description,
+      }),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      alert(`保存失败：${t}`);
+      return;
+    }
+    cancelEdit();
+    await loadModels();
+  } catch (e) {
+    alert(`保存失败：${e.message || e}`);
+  }
+}
+
+function cancelEdit() {
+  _modelsEditingId = null;
+  document.getElementById("models-edit-section").style.display = "none";
+}
+
+async function deleteModel(modelId, name) {
+  if (!confirm(`确定停用模型 #${modelId}（${name}）？\n（软删除：将 is_active 置 false）`)) return;
+  try {
+    const r = await fetch(`/api/admin/models/${modelId}`, { method: "DELETE" });
+    if (!r.ok) {
+      const t = await r.text();
+      alert(`停用失败：${t}`);
+      return;
+    }
+    await loadModels();
+  } catch (e) {
+    alert(`停用失败：${e.message || e}`);
+  }
+}
+
+async function registerModel() {
+  // 5 个必填字段：name / role / version / model_provider / model_name
+  const name = (prompt("模型 name（必填，例如 gpt4o-stock-analyst）") || "").trim();
+  if (!name) return;
+  const role = (prompt("agent role（必填：market_analyst / sector_analyst / stock_analyst / committee）") || "").trim();
+  if (!role) return;
+  const versionStr = (prompt("version（必填，整数，例如 1）", "1") || "").trim();
+  const version = parseInt(versionStr, 10);
+  if (!Number.isFinite(version) || version < 1) {
+    alert("version 必须是正整数");
+    return;
+  }
+  const modelProvider = (prompt("model_provider（可选：openai / anthropic / deepseek / local）", "openai") || "").trim();
+  const modelName = (prompt("model_name（可选：gpt-4o / claude-3.5-sonnet / ...）", "gpt-4o") || "").trim();
+  const weightStr = (prompt("weight（0.0 - 100.0，默认 1.0）", "1.0") || "1.0").trim();
+  const weight = parseFloat(weightStr);
+  if (!Number.isFinite(weight) || weight < 0 || weight > 100) {
+    alert("weight 必须在 0.0 - 100.0 之间");
+    return;
+  }
+  const isActiveStr = (prompt("是否直接设为 active？yes/no（默认 no）", "no") || "no").trim().toLowerCase();
+  const isActive = isActiveStr === "yes" || isActiveStr === "y" || isActiveStr === "true";
+  const description = (prompt("description（可选）") || "").trim();
+  const configText = (prompt("config_json（可选，合法 JSON dict，留空跳过）", "{}") || "{}").trim();
+  let configJson = null;
+  if (configText && configText !== "{}") {
+    try {
+      configJson = JSON.parse(configText);
+    } catch (e) {
+      alert(`config_json 不合法：${e.message}`);
+      return;
+    }
+  }
+  try {
+    const r = await fetch("/api/admin/models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        role,
+        version,
+        model_provider: modelProvider || null,
+        model_name: modelName || null,
+        weight,
+        config_json: configJson,
+        description: description || null,
+        is_active: isActive,
+      }),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      alert(`注册失败：${t}`);
+      return;
+    }
+    await loadModels();
+  } catch (e) {
+    alert(`注册失败：${e.message || e}`);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
 // 启动绑定
 // ════════════════════════════════════════════════════════════════
 
@@ -5807,6 +6126,11 @@ function bindAllButtons() {
     const el = document.getElementById(id);
     if (el) el.addEventListener("click", fn);
   };
+  // P2-T10 模型管理
+  bind("models-refresh", loadModels);
+  bind("models-register", registerModel);
+  bind("models-edit-save", saveEdit);
+  bind("models-edit-cancel", cancelEdit);
   // analysis
   bind("wf-run", runWalkForward);
   bind("wf-random", () => randomizeReturns("wf-returns"));
@@ -5853,7 +6177,15 @@ document.addEventListener("DOMContentLoaded", () => {
         opsRetentionStatus();
       } else if (key === "analysis") {
         // 用户主动点才跑，不自动
+      } else if (key === "models") {
+        // P2-T10 模型管理：主动切到该 tab 时强制刷新
+        loadModels();
       }
     });
+  }
+  // P2-T10: models-role-filter 切换即时刷新
+  const modelsRoleFilter = document.getElementById("models-role-filter");
+  if (modelsRoleFilter) {
+    modelsRoleFilter.addEventListener("change", () => loadModels());
   }
 });
