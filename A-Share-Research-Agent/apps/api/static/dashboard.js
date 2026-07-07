@@ -837,6 +837,10 @@ let _decisionTraceCache = null;
 let _researchAuditCache = null;
 let _signalsApprovedChart = null;
 let _signalsBlockedChart = null;
+// P1-T2 Watchlist
+let _watchlistCache = null;
+let _watchlistSelectedId = null;
+let _watchlistItems = [];
 let _signalsAttributionChart = null;
 let _signalsRunsCompareChart = null;
 let _signalsModuleRebalanceChart = null;
@@ -3103,6 +3107,203 @@ function stopSchedulerAutoRefresh() {
   }
 }
 
+// ── P1-T2 Watchlist ──────────────────────────────
+
+async function loadWatchlist(force = false) {
+  if (_watchlistCache && !force) {
+    _renderWatchlistList();
+    _renderWatchlistItems();
+    return _watchlistCache;
+  }
+  try {
+    const r = await fetch("/api/watchlist");
+    if (!r.ok) throw new Error(`watchlist list failed: ${r.status}`);
+    const data = await r.json();
+    _watchlistCache = data.items || [];
+    if (!_watchlistSelectedId && _watchlistCache.length) {
+      _watchlistSelectedId = _watchlistCache[0].watchlist_id;
+    }
+    _renderWatchlistList();
+    _renderWatchlistItems();
+  } catch (err) {
+    const el = document.getElementById("wl-list");
+    if (el) el.innerHTML = `<div class="muted">加载失败：${err.message}</div>`;
+  }
+  return _watchlistCache;
+}
+
+function _renderWatchlistList() {
+  const list = _watchlistCache || [];
+  const sum = document.getElementById("wl-list-summary");
+  const el = document.getElementById("wl-list");
+  if (!el) return;
+  if (sum) sum.textContent = `共 ${list.length} 个分组`;
+  if (list.length === 0) {
+    el.innerHTML = `<div class="muted">尚无分组。点击右上 <b>+ 新建分组</b> 创建。</div>`;
+    return;
+  }
+  el.innerHTML = `<div style="display:flex; flex-wrap:wrap; gap:8px;">${list
+    .map(
+      (w) => `<button class="btn ${
+        w.watchlist_id === _watchlistSelectedId ? "btn-primary" : ""
+      }" data-wl-id="${w.watchlist_id}" type="button">
+        ⭐ ${w.name} <span class="muted" style="font-size:11px;">(${w.item_count})</span>
+      </button>`,
+    )
+    .join("")}</div>`;
+  el.querySelectorAll("[data-wl-id]").forEach((b) => {
+    b.addEventListener("click", () => {
+      _watchlistSelectedId = parseInt(b.dataset.wlId, 10);
+      _renderWatchlistList();
+      _loadWatchlistItems(_watchlistSelectedId);
+    });
+  });
+  const addBtn = document.getElementById("wl-add-btn");
+  const delBtn = document.getElementById("wl-delete-list");
+  if (addBtn) addBtn.disabled = false;
+  if (delBtn) delBtn.disabled = false;
+}
+
+async function _loadWatchlistItems(watchlistId) {
+  if (!watchlistId) {
+    _watchlistItems = [];
+    _renderWatchlistItems();
+    return;
+  }
+  try {
+    const r = await fetch(`/api/watchlist/${watchlistId}`);
+    if (!r.ok) throw new Error(`watchlist ${watchlistId} failed: ${r.status}`);
+    const data = await r.json();
+    _watchlistItems = data.items || [];
+    _renderWatchlistItems();
+  } catch (err) {
+    const el = document.getElementById("wl-items");
+    if (el) el.innerHTML = `<div class="muted">加载明细失败：${err.message}</div>`;
+  }
+}
+
+function _renderWatchlistItems() {
+  const sum = document.getElementById("wl-detail-summary");
+  const el = document.getElementById("wl-items");
+  if (!el) return;
+  if (sum) {
+    const sel = (_watchlistCache || []).find(
+      (w) => w.watchlist_id === _watchlistSelectedId,
+    );
+    sum.textContent = sel ? `${sel.name} · ${_watchlistItems.length} 个标的` : "选择分组以查看标的";
+  }
+  if (!_watchlistSelectedId) {
+    el.innerHTML = `<div class="muted">选择左侧分组以查看标的</div>`;
+    return;
+  }
+  if (_watchlistItems.length === 0) {
+    el.innerHTML = `<div class="muted">当前分组为空。上面输入代码后点 "+ 加入当前分组"。</div>`;
+    return;
+  }
+  el.innerHTML = `<table class="data-table" style="width:100%;">
+    <thead><tr>
+      <th>代码</th><th>备注</th><th>加入时间</th><th>操作</th>
+    </tr></thead>
+    <tbody>${_watchlistItems
+      .map(
+        (it) => `<tr>
+        <td><b>${it.symbol}</b></td>
+        <td class="muted">${it.note || "—"}</td>
+        <td class="muted">${it.added_at || "—"}</td>
+        <td>
+          <button class="btn" data-wl-jump="${it.symbol}" type="button">去详情</button>
+          <button class="btn" data-wl-remove="${it.symbol}" type="button">移除</button>
+        </td>
+      </tr>`,
+      )
+      .join("")}</tbody></table>`;
+  el.querySelectorAll("[data-wl-jump]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const code = b.dataset.wlJump;
+      const stockCodeInput = document.getElementById("stock-code");
+      if (stockCodeInput) stockCodeInput.value = code;
+      switchTab("stock");
+      loadStock(code);
+    });
+  });
+  el.querySelectorAll("[data-wl-remove]").forEach((b) => {
+    b.addEventListener("click", async () => {
+      const sym = b.dataset.wlRemove;
+      const r = await fetch(
+        `/api/watchlist/${_watchlistSelectedId}/items/${sym}`,
+        { method: "DELETE" },
+      );
+      if (r.ok) {
+        _watchlistCache = null;
+        await loadWatchlist(true);
+      }
+    });
+  });
+}
+
+async function _createWatchlistItem() {
+  if (!_watchlistSelectedId) return;
+  const symEl = document.getElementById("wl-add-symbol");
+  const noteEl = document.getElementById("wl-add-note");
+  const sym = (symEl?.value || "").trim();
+  if (!sym) return;
+  const r = await fetch(`/api/watchlist/${_watchlistSelectedId}/items`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ symbol: sym, note: noteEl?.value || null }),
+  });
+  if (r.ok) {
+    if (symEl) symEl.value = "";
+    if (noteEl) noteEl.value = "";
+    _watchlistCache = null;
+    await loadWatchlist(true);
+  } else {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    alert(`加入失败：${err.detail || r.status}`);
+  }
+}
+
+async function _createWatchlistList() {
+  const nameEl = document.getElementById("wl-new-name");
+  const descEl = document.getElementById("wl-new-desc");
+  const statusEl = document.getElementById("wl-new-status");
+  const name = (nameEl?.value || "").trim();
+  if (!name) {
+    if (statusEl) statusEl.textContent = "请填写分组名";
+    return;
+  }
+  const r = await fetch("/api/watchlist", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, description: descEl?.value || null }),
+  });
+  if (r.ok) {
+    const w = await r.json();
+    if (statusEl) statusEl.textContent = `已创建（id=${w.watchlist_id}）`;
+    if (nameEl) nameEl.value = "";
+    if (descEl) descEl.value = "";
+    _watchlistCache = null;
+    _watchlistSelectedId = w.watchlist_id;
+    await loadWatchlist(true);
+  } else {
+    const err = await r.json().catch(() => ({ detail: r.statusText }));
+    if (statusEl) statusEl.textContent = `创建失败：${err.detail || r.status}`;
+  }
+}
+
+async function _deleteCurrentWatchlist() {
+  if (!_watchlistSelectedId) return;
+  if (!confirm("确定删除当前分组？所有标的也会一并移除。")) return;
+  const r = await fetch(`/api/watchlist/${_watchlistSelectedId}`, {
+    method: "DELETE",
+  });
+  if (r.ok) {
+    _watchlistSelectedId = null;
+    _watchlistCache = null;
+    await loadWatchlist(true);
+  }
+}
+
 function switchTab(tabName) {
   document.querySelectorAll(".tab").forEach((t) => {
     const isActive = t.dataset.tab === tabName;
@@ -3132,6 +3333,8 @@ function switchTab(tabName) {
     startTopologyAutoRefresh();
   } else if (tabName === "macro") {
     if (!_macroCache) loadMacro();
+  } else if (tabName === "watchlist") {
+    if (!_watchlistCache) loadWatchlist();
   }
   if (tabName !== "topology") stopTopologyAutoRefresh();
   if (tabName !== "signals") stopSchedulerAutoRefresh();
@@ -3244,6 +3447,23 @@ document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("signals-toggle-all").addEventListener("click", () => {
     _toggleAllSignalsSections();
   });
+  // P1-T2 Watchlist 绑定
+  const wlRefresh = document.getElementById("wl-refresh");
+  if (wlRefresh) wlRefresh.addEventListener("click", () => loadWatchlist(true));
+  const wlNew = document.getElementById("wl-new");
+  if (wlNew) wlNew.addEventListener("click", () => {
+    const section = document.querySelector('[data-section-key="wl-new"]');
+    if (section) {
+      section.classList.remove("collapsed");
+      document.getElementById("wl-new-name")?.focus();
+    }
+  });
+  const wlNewSubmit = document.getElementById("wl-new-submit");
+  if (wlNewSubmit) wlNewSubmit.addEventListener("click", _createWatchlistList);
+  const wlAddBtn = document.getElementById("wl-add-btn");
+  if (wlAddBtn) wlAddBtn.addEventListener("click", _createWatchlistItem);
+  const wlDelBtn = document.getElementById("wl-delete-list");
+  if (wlDelBtn) wlDelBtn.addEventListener("click", _deleteCurrentWatchlist);
   // Tab 导航
   document.querySelectorAll(".tab").forEach((t) => {
     t.addEventListener("click", () => switchTab(t.dataset.tab));
