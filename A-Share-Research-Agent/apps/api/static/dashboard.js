@@ -2662,6 +2662,8 @@ function switchTab(tabName) {
     if (!_btInited) initBacktest();
   } else if (tabName === "topology") {
     startTopologyAutoRefresh();
+  } else if (tabName === "macro") {
+    if (!_macroCache) loadMacro();
   }
   if (tabName !== "topology") stopTopologyAutoRefresh();
 }

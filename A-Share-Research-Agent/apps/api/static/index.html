@@ -61,6 +61,10 @@
           <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
           运维管理
         </button>
+        <button class="tab" data-tab="macro">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20"></path><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          宏观环境
+        </button>
       </nav>
     </aside>
 
@@ -1015,6 +1019,52 @@
           <button id="ops-retention-run" class="signal-btn-primary" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">▶ 执行</button>
         </div>
         <div id="ops-retention-result" class="alert-bar" style="margin-top: 12px;"></div>
+      </section>
+    </div>
+
+    <!-- P0-T6: 宏观环境 tab -->
+    <div class="tab-panel" data-tab="macro">
+      <!-- 头图：宏观环境 P0-T6 -->
+      <section class="card macro-hero">
+        <div class="signal-eyebrow">MACRO REGIME · 宏观环境</div>
+        <h2 class="signal-h1">宏观环境 <span class="muted">PMI · CPI · M2 · 中美利差 · LLM 解读</span></h2>
+        <p class="signal-sub">基于 4 个核心宏观端点 + LLM 解读判断当前是进攻 / 谨慎 / 防守 / 恐慌中的哪一档</p>
+        <div class="signal-hero-actions">
+          <button class="btn btn-primary" onclick="loadMacro()">刷新宏观解读</button>
+        </div>
+      </section>
+
+      <!-- ① 4 指标卡片 -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">①</span> 4 个核心指标</h2>
+          <span class="muted">PMI 制造业 / CPI 同比 / M2 同比 / 中美 10Y 利差</span>
+        </div>
+        <div class="macro-indicator-grid" id="macro-indicator-grid">
+          <div class="muted" style="padding: 12px;">加载中…</div>
+        </div>
+      </section>
+
+      <!-- ② LLM 解读（核心交付） -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">②</span> LLM 宏观解读</h2>
+          <span class="muted">基于 4 端点快照 + 近期趋势，综合立场 + 分项观点</span>
+        </div>
+        <div id="macro-interpretation" class="macro-interpretation">
+          <div class="muted" style="padding: 12px;">加载中…</div>
+        </div>
+      </section>
+
+      <!-- ③ 原始快照（折叠） -->
+      <section class="card signals-collapsible collapsed" data-section-key="macro-snapshot">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">③</span> 原始快照</h2>
+          <span class="muted">4 端点 raw 数据，便于审计</span>
+        </div>
+        <div id="macro-snapshot-raw" class="muted" style="padding: 12px; font-family: var(--font-mono, monospace); font-size: 12px;">
+          待展开
+        </div>
       </section>
     </div>
         </main>

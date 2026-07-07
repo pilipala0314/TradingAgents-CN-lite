@@ -14,6 +14,7 @@ from core.logger import setup_logging
 from data_pipeline.etl import FactETLPipeline
 from data_pipeline.etl.futures_kline_etl import FuturesKlineETL
 from data_pipeline.etl.hk_kline_etl import HKKlineETL
+from data_pipeline.etl.macro_etl import MacroETL
 from data_pipeline.etl.sw_industry_kline_etl import SWIndustryKlineETL
 from data_pipeline.etl.us_kline_etl import USKlineETL
 
@@ -186,6 +187,23 @@ async def _run_sw_industry_close_async(
             raise
 
 
+async def _run_macro_ingest_async(business_date: date) -> dict:
+    """P0-T5: 宏观数据 ETL（每日 09:00 跑）。"""
+    from core.database import AsyncSessionLocal
+
+    etl = MacroETL()
+    async with AsyncSessionLocal() as session:
+        try:
+            result = await etl.run_daily_ingest(
+                session, business_date=business_date,
+            )
+            await session.commit()
+            return result
+        except Exception:
+            await session.rollback()
+            raise
+
+
 @celery_app.task(name="ashare.run_hk_close_etl", bind=True, max_retries=2)
 def run_hk_close_etl(
     self,
@@ -297,4 +315,28 @@ def run_sw_industry_close_etl(
         )
     except Exception as exc:
         logger.exception("申万行业指数 K 线 ETL 失败，准备重试: %s", exc)
+        raise self.retry(exc=exc, countdown=60) from exc
+
+
+# ── P0-T5: 宏观数据 ETL ──────────────────────────────────────────
+
+
+@celery_app.task(name="ashare.run_macro_ingest", bind=True, max_retries=2)
+def run_macro_ingest(
+    self,
+    business_date_str: str | None = None,
+) -> dict:
+    """P0-T5: 宏观数据 ETL（每日 09:00 跑）。
+
+    失败策略：自动重试 2 次，间隔 60s。
+    """
+    business_date = (
+        date.fromisoformat(business_date_str)
+        if business_date_str
+        else (datetime.now() - timedelta(days=1)).date()
+    )
+    try:
+        return asyncio.run(_run_macro_ingest_async(business_date))
+    except Exception as exc:
+        logger.exception("宏观数据 ETL 失败，准备重试: %s", exc)
         raise self.retry(exc=exc, countdown=60) from exc
