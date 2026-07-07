@@ -368,6 +368,18 @@
         <div id="signals-meta" class="alert-bar"></div>
         <div class="signal-kpis" id="signals-workbench-summary">汇总加载中…</div>
         <div id="signals-workbench-alerts" class="signal-alerts"></div>
+
+        <!-- P0-T7: 每日信号 cron 监控（scheduler 状态） -->
+        <div class="signal-scheduler-strip">
+          <div class="signal-scheduler-strip-head">
+            <span class="signal-scheduler-eyebrow">⏰ DAILY CRON · 17:00/17:30 工作日</span>
+            <span class="muted" id="signal-scheduler-fetched" style="font-size:11px;">—</span>
+            <button id="signal-scheduler-refresh" class="signal-btn-ghost" style="margin-left:auto; padding:2px 10px; font-size:11px;">↻ 30s 自动</button>
+          </div>
+          <div id="signal-scheduler-cards" class="signal-scheduler-cards">
+            <div class="signal-scheduler-card loading">加载中…</div>
+          </div>
+        </div>
       </section>
 
       <!-- ░░░ 主体（叙事顺序）：市场 → 板块 → 选股/拦截 → 决策证据 ░░░ -->

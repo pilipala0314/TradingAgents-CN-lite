@@ -2758,6 +2758,95 @@ async function loadSignals() {
 
 // ── Tab 切换 ────────────────────────────────────────────────
 
+// ── P0-T7: 每日信号 cron 监控 ─────────────────────────────
+
+let _schedulerTimer = null;
+const SCHEDULER_POLL_MS = 30_000;
+
+function _formatNextRunIn(sec) {
+  if (sec == null) return "—";
+  if (sec <= 0) return "即将执行";
+  if (sec < 60) return `${Math.round(sec)} 秒后`;
+  if (sec < 3600) return `${Math.round(sec / 60)} 分钟后`;
+  if (sec < 86400) return `${(sec / 3600).toFixed(1)} 小时后`;
+  return `${(sec / 86400).toFixed(1)} 天后`;
+}
+
+function _formatNextRunTime(iso) {
+  if (!iso) return "—";
+  try {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return "—";
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch (e) {
+    return "—";
+  }
+}
+
+function _renderSchedulerCard(job) {
+  const next = job.next_run_in_sec;
+  const isSoon = next != null && next < 600; // 10 分钟内即将执行
+  const iconCls = job.coalesce ? "ok" : "idle";
+  const iconChar = job.coalesce ? "✓" : "⏸";
+  return `<div class="signal-scheduler-card" data-job-id="${job.id}">
+    <div class="signal-scheduler-icon ${iconCls}">${iconChar}</div>
+    <div class="signal-scheduler-body">
+      <div class="signal-scheduler-name">${job.name || job.id}</div>
+      <div class="signal-scheduler-trigger">${_escapeHtml(job.trigger || "")}</div>
+      <div class="signal-scheduler-next ${isSoon ? "signal-scheduler-next-soon" : ""}">
+        ⏱ 下次：${_formatNextRunTime(job.next_run_time)}（${_formatNextRunIn(next)}）
+      </div>
+    </div>
+  </div>`;
+}
+
+function _renderSchedulerError(message) {
+  return `<div class="signal-scheduler-card error" style="border-color:rgba(239,68,68,0.3);">
+    <div class="signal-scheduler-icon error">⚠</div>
+    <div class="signal-scheduler-body">
+      <div class="signal-scheduler-name" style="color:#f87171;">${_escapeHtml(message)}</div>
+      <div class="signal-scheduler-trigger">GET /admin/scheduler/status</div>
+    </div>
+  </div>`;
+}
+
+async function loadSchedulerStatus() {
+  const cardsEl = document.getElementById("signal-scheduler-cards");
+  const fetchedEl = document.getElementById("signal-scheduler-fetched");
+  if (!cardsEl) return;
+  try {
+    const data = await fetchJSON("/admin/scheduler/status");
+    const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+    if (!data.running) {
+      cardsEl.innerHTML = '<div class="signal-scheduler-card empty">scheduler 未注册（lifespan 未启动）</div>';
+    } else if (jobs.length === 0) {
+      cardsEl.innerHTML = '<div class="signal-scheduler-card empty">scheduler 运行中但无注册 job</div>';
+    } else {
+      cardsEl.innerHTML = jobs.map(_renderSchedulerCard).join("");
+    }
+    if (fetchedEl) {
+      fetchedEl.textContent = `${data.job_count} jobs · ${data.timezone || ""} · ${_formatNextRunTime(data.fetched_at)}`;
+    }
+  } catch (e) {
+    cardsEl.innerHTML = _renderSchedulerError(`scheduler 拉取失败: ${e.message}`);
+    if (fetchedEl) fetchedEl.textContent = "—";
+  }
+}
+
+function startSchedulerAutoRefresh() {
+  if (_schedulerTimer) return;
+  loadSchedulerStatus();
+  _schedulerTimer = setInterval(loadSchedulerStatus, SCHEDULER_POLL_MS);
+}
+
+function stopSchedulerAutoRefresh() {
+  if (_schedulerTimer) {
+    clearInterval(_schedulerTimer);
+    _schedulerTimer = null;
+  }
+}
+
 function switchTab(tabName) {
   document.querySelectorAll(".tab").forEach((t) => {
     const isActive = t.dataset.tab === tabName;
@@ -2775,6 +2864,7 @@ function switchTab(tabName) {
     if (_klineChart) _klineChart.resize();
   } else if (tabName === "signals") {
     if (!_signalsCache) loadSignals();
+    loadSchedulerStatus();
   } else if (tabName === "health") {
     if (!_healthCache) loadHealthDetail();
   } else if (tabName === "overview") {
@@ -2787,6 +2877,7 @@ function switchTab(tabName) {
     if (!_macroCache) loadMacro();
   }
   if (tabName !== "topology") stopTopologyAutoRefresh();
+  if (tabName !== "signals") stopSchedulerAutoRefresh();
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -2834,6 +2925,13 @@ document.addEventListener("DOMContentLoaded", () => {
     decLimit.addEventListener("change", () => {
       const code = document.getElementById("stock-code").value.trim();
       loadStockDecisions(code);
+    });
+  }
+  // P0-T7 scheduler 监控刷新按钮
+  const schedRefresh = document.getElementById("signal-scheduler-refresh");
+  if (schedRefresh) {
+    schedRefresh.addEventListener("click", () => {
+      loadSchedulerStatus();
     });
   }
   document.getElementById("health-refresh").addEventListener("click", loadHealthDetail);
