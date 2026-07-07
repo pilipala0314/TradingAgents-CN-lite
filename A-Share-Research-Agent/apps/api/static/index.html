@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>A-Share-Research-Agent · 投研 Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="app-layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        </div>
+        <h1>A-Share Agent</h1>
+      </div>
+      <nav id="tab-bar" class="tab-bar">
+        <button class="tab active" data-tab="overview">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          市场概览
+        </button>
+        <button class="tab" data-tab="stock">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+          个股分析
+        </button>
+        <button class="tab" data-tab="compare">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M16 3h5v5"/><path d="M8 3H3v5"/><path d="M12 22v-8.3a4 4 0 0 0-1.172-2.872L3 3"/><path d="m15 9 6-6"/></svg>
+          多股对比
+        </button>
+        <button class="tab" data-tab="topology">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+          链路大屏
+        </button>
+        <button class="tab" data-tab="signals">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          今日信号
+        </button>
+        <button class="tab" data-tab="backtest">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.66 0 3-4.03 3-9s-1.34-9-3-9m0 18c-1.66 0-3-4.03-3-9s1.34-9 3-9m-9 9a9 9 0 0 1 9-9"/></svg>
+          回测引擎
+        </button>
+        <button class="tab" data-tab="analysis">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg>
+          高级分析
+        </button>
+        <div class="nav-divider"></div>
+        <button class="tab" data-tab="health">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+          数据源
+        </button>
+        <button class="tab" data-tab="alerts">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+          监控告警
+        </button>
+        <button class="tab" data-tab="monitor">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          系统追踪
+        </button>
+        <button class="tab" data-tab="ops">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+          运维管理
+        </button>
+      </nav>
+    </aside>
+
+    <div class="main-content">
+      <header class="topbar">
+        <div class="breadcrumb">
+          <span class="text-muted">A-Share-Research-Agent</span>
+          <span class="separator">/</span>
+          <span id="current-page-title" style="color: var(--text); font-weight: 500;">市场概览</span>
+        </div>
+        <div id="health-bar"><span class="label">健康度加载中…</span></div>
+      </header>
+
+      <main class="content-scroll">
+    <!-- Tab: 市场概览 -->
+    <div class="tab-panel active" data-tab="overview">
+      <!-- 头图：市场概览 -->
+      <section class="card overview-hero">
+        <div class="signal-hero-head">
+          <div>
+            <div class="signal-eyebrow">MARKET OVERVIEW</div>
+            <h2 class="signal-h1">市场概览 <span class="muted" style="font-size:14px;">系统健康 · 全球指数</span></h2>
+            <p class="signal-sub">一屏看清数据源健康度 + 全球主要指数实时报价</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ① 系统健康度（核心） -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">①</span> 系统健康度</h2>
+          <span class="muted">Provider × Method 实时成功率</span>
+        </div>
+        <div id="health-cards" class="signal-mini-grid"></div>
+      </section>
+
+      <!-- ② 全球指数（核心，按市场分组） -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">②</span> 全球指数</h2>
+          <span class="muted">A 股 / 港股 / 美股 / 其他</span>
+        </div>
+        <div class="global-markets-grid">
+          <div class="global-markets-cell">
+            <div class="global-markets-title">A 股主要指数</div>
+            <div id="global-table-cn" class="table-wrap"></div>
+          </div>
+          <div class="global-markets-cell">
+            <div class="global-markets-title">港股主要指数</div>
+            <div id="global-table-hk" class="table-wrap"></div>
+          </div>
+          <div class="global-markets-cell">
+            <div class="global-markets-title">美股主要指数</div>
+            <div id="global-table-us" class="table-wrap"></div>
+          </div>
+          <div class="global-markets-cell">
+            <div class="global-markets-title">其他 / 大宗</div>
+            <div id="global-table-other" class="table-wrap"></div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- Tab: 个股详情 -->
+    <div class="tab-panel" data-tab="stock">
+      <!-- 头图：股票代码 + 实时行情 + 查询 -->
+      <section class="card stock-hero">
+        <div class="signal-hero-head">
+          <div>
+            <div class="signal-eyebrow">EQUITY DETAIL</div>
+            <h2 class="signal-h1">个股详情 <span class="muted" style="font-size:14px;">实时行情 · K 线 · 公告</span></h2>
+            <p class="signal-sub">输入 6 位 A 股代码，查询实时行情 + 历史 K 线 + 最近公告</p>
+          </div>
+          <div class="signal-hero-actions">
+            <input id="stock-code" type="text" placeholder="6 位代码" value="600519"
+                   style="padding: 10px 14px; font-size: 14px; font-family: var(--font-mono); min-width: 130px;" />
+            <button id="stock-load" class="signal-btn-primary">↻ 查询</button>
+          </div>
+        </div>
+        <div id="stock-quote" class="stock-quote-card">加载中…</div>
+      </section>
+
+      <!-- ① K 线主图 -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">①</span> K 线走势</h2>
+          <span class="muted">支持滚轮缩放 + 拖动平移</span>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">指标：
+            <select id="kline-metric">
+              <option value="close">收盘价</option>
+              <option value="change_pct">累计涨跌幅</option>
+              <option value="volume">成交量</option>
+            </select>
+          </label>
+          <label class="muted">回看天数：
+            <select id="kline-days">
+              <option value="30">30</option>
+              <option value="60" selected>60</option>
+              <option value="120">120</option>
+            </select>
+          </label>
+        </div>
+        <canvas id="kline-chart" height="160"></canvas>
+      </section>
+
+      <!-- ② 最近公告（折叠） -->
+      <section class="card signals-collapsible" data-section-key="stock-announcements">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">②</span> 最近公告 <span class="muted" style="font-weight:400">数据源 cninfo · 巨潮资讯</span></h2>
+        </div>
+        <div id="stock-announcements" class="table-wrap"></div>
+      </section>
+    </div>
+
+    <!-- Tab: 多股对比 -->
+    <div class="tab-panel" data-tab="compare">
+      <!-- 头图：多股对比 -->
+      <section class="card compare-hero">
+        <div class="signal-hero-head">
+          <div>
+            <div class="signal-eyebrow">CROSS SECTION</div>
+            <h2 class="signal-h1">多股对比 <span class="muted" style="font-size:14px;">最多 5 只股票同框对比</span></h2>
+            <p class="signal-sub">输入股票代码，绘制同时间窗口的收盘价 / 累计涨跌幅走势</p>
+          </div>
+          <div class="signal-hero-actions">
+            <input id="compare-input" type="text" placeholder="逗号分隔，如 600519,000001"
+                   value="600519,000001,600036"
+                   style="padding: 10px 14px; font-size: 14px; font-family: var(--font-mono); min-width: 260px;" />
+            <button id="compare-load" class="signal-btn-primary">↻ 对比</button>
+          </div>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted"><input id="compare-normalize" type="checkbox" checked /> 归一化起点（首日=0%）</label>
+        </div>
+        <div id="compare-summary" class="compare-summary-row">输入 2-5 只股票代码（逗号分隔）</div>
+      </section>
+
+      <!-- ① 对比走势 -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">①</span> 走势对比</h2>
+          <span class="muted">支持滚轮缩放 + 拖动平移</span>
+        </div>
+        <canvas id="compare-chart" height="180"></canvas>
+      </section>
+    </div>
+
+    <!-- Tab: 链路大屏 (Topology) -->
+    <div class="tab-panel" data-tab="topology">
+      <!-- 头图：链路大屏 -->
+      <section class="card topology-hero">
+        <div class="signal-hero-head">
+          <div>
+            <div class="signal-eyebrow">AGENT ORCHESTRATION</div>
+            <h2 class="signal-h1">链路大屏 <span class="muted" style="font-size:14px;">智能体编排 · 数据血缘</span></h2>
+            <p class="signal-sub">6 节点研究链路 + 数据流血缘 · 点击节点查看实时遥测</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ① 智能体编排 + 数据血缘（核心） + 节点观测终端（侧栏） -->
+      <div class="topo-layout">
+        <div class="topo-main">
+          <section class="card">
+            <div class="signal-section-head">
+              <h2><span class="signal-num">①</span> 智能体编排</h2>
+              <span class="muted">6 节点研究链路</span>
+            </div>
+            <div class="topo-graph" id="agent-graph">
+              <div class="topo-node" data-target="scheduler">
+                <div class="icon">⏰</div>
+                <div class="title">触发器 (Scheduler)</div>
+                <div class="meta" id="topo-meta-scheduler">17:30 Daily</div>
+              </div>
+              <div class="topo-edge animated"></div>
+              <div class="topo-node" data-target="market">
+                <div class="icon">🌍</div>
+                <div class="title">宏观智能体 (Market)</div>
+                <div class="meta" id="topo-meta-market">加载中...</div>
+              </div>
+              <div class="topo-edge animated"></div>
+              <div class="topo-node" data-target="sector">
+                <div class="icon">📊</div>
+                <div class="title">板块轮动 (Sector)</div>
+                <div class="meta" id="topo-meta-sector">加载中...</div>
+              </div>
+              <div class="topo-edge animated"></div>
+              <div class="topo-node" data-target="stock">
+                <div class="icon">📈</div>
+                <div class="title">个股精选 (Stock)</div>
+                <div class="meta" id="topo-meta-stock">加载中...</div>
+              </div>
+              <div class="topo-edge animated"></div>
+              <div class="topo-node" data-target="committee">
+                <div class="icon">⚖️</div>
+                <div class="title">决策委员会 (Committee)</div>
+                <div class="meta" id="topo-meta-committee">加载中...</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="signal-section-head">
+              <h2><span class="signal-num">②</span> 数据血缘</h2>
+              <span class="muted">采存算管用一体化</span>
+            </div>
+            <div class="topo-graph" id="data-graph">
+              <div class="topo-node" data-target="sources">
+                <div class="icon">📡</div>
+                <div class="title">外部数据源 (External)</div>
+                <div class="meta" id="topo-meta-sources">Sina/AkShare/Netease</div>
+              </div>
+              <div class="topo-edge animated"></div>
+              <div class="topo-node" data-target="gateway">
+                <div class="icon">🛡️</div>
+                <div class="title">统一路由网关 (DataRouter)</div>
+                <div class="meta" id="topo-meta-gateway">加载中...</div>
+              </div>
+              <div class="topo-edge animated"></div>
+              <div class="topo-node" data-target="ods">
+                <div class="icon">🗄️</div>
+                <div class="title">贴源/明细层 (PostgreSQL)</div>
+                <div class="meta" id="topo-meta-ods">加载中...</div>
+              </div>
+              <div class="topo-edge animated"></div>
+              <div class="topo-node" data-target="retention">
+                <div class="icon">🗑️</div>
+                <div class="title">归档策略 (Retention)</div>
+                <div class="meta" id="topo-meta-retention">加载中...</div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="topo-sidebar">
+          <section class="card">
+            <div class="signal-section-head">
+              <h2>节点观测终端</h2>
+              <span class="muted">Observability</span>
+            </div>
+            <div id="topo-log-panel" class="log-panel">
+              <div class="log-line info">root@ashare-agent:~# 等待选择节点...</div>
+              <div class="log-line muted">请点击左侧拓扑图中的节点查看实时遥测数据与 Payload。</div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: 今日信号 (P6) -->
+    <div class="tab-panel" data-tab="signals">
+      <!-- ░░░ 头图：今日信号总览 ░░░ -->
+      <section class="card signal-hero">
+        <div class="signal-hero-head">
+          <div>
+            <div class="signal-eyebrow">DAILY COMMITTEE DECISION</div>
+            <h2 class="signal-h1">今日信号 <span id="signals-date" class="signal-date">日期加载中…</span></h2>
+            <p class="signal-sub">6 节点研究链路 · 落库后可追溯到原始数据与决策证据</p>
+          </div>
+          <div class="signal-hero-actions">
+            <button id="signals-refresh" class="signal-btn-primary">↻ 刷新</button>
+            <button id="signals-toggle-all" class="signal-btn-ghost">展开/折叠细节</button>
+            <label class="signal-toggle">
+              <input id="signals-global-anomaly-only" type="checkbox" />
+              <span>仅看异常</span>
+            </label>
+          </div>
+        </div>
+        <div id="signals-meta" class="alert-bar"></div>
+        <div class="signal-kpis" id="signals-workbench-summary">汇总加载中…</div>
+        <div id="signals-workbench-alerts" class="signal-alerts"></div>
+      </section>
+
+      <!-- ░░░ 主体（叙事顺序）：市场 → 板块 → 选股/拦截 → 决策证据 ░░░ -->
+
+      <!-- ① 顶层市场 · regime 一张图 -->
+      <div class="signal-row-2">
+        <section class="card signal-col-main">
+          <div class="signal-section-head">
+            <h2><span class="signal-num">①</span> 顶层市场</h2>
+            <span class="muted">regime · 强度 · 触发条件</span>
+          </div>
+          <div id="signals-market" class="signal-market-card">加载中…</div>
+        </section>
+        <section class="card signal-col-side">
+          <div class="signal-section-head">
+            <h2><span class="signal-num">②</span> 板块轮动</h2>
+            <span class="muted">领涨 / 领跌 · Top N</span>
+          </div>
+          <div id="signals-sector" class="table-wrap"></div>
+        </section>
+      </div>
+
+      <!-- ③ 准入 vs 拦截 · 决策结果 -->
+      <div class="signal-row-2">
+        <section class="card signal-decision-pane signal-approved-pane">
+          <div class="signal-section-head">
+            <h2><span class="signal-num">③</span> 准入个股 <span class="signal-tag tag-approved">approved</span></h2>
+            <span class="muted">通过委员会投票的买入候选</span>
+          </div>
+          <div id="signals-approved" class="table-wrap"></div>
+          <canvas id="signals-approved-chart" class="signal-mini-chart" height="120"></canvas>
+        </section>
+        <section class="card signal-decision-pane signal-blocked-pane">
+          <div class="signal-section-head">
+            <h2><span class="signal-num">④</span> 拦截个股 <span class="signal-tag tag-blocked">blocked</span></h2>
+            <span class="muted">被风控或委员会拒绝的标的</span>
+          </div>
+          <div id="signals-blocked" class="table-wrap"></div>
+          <canvas id="signals-blocked-chart" class="signal-mini-chart" height="120"></canvas>
+        </section>
+      </div>
+
+      <!-- ⑤ 决策证据 · 可追溯 -->
+      <section class="card signals-collapsible" data-section-key="trace">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">⑤</span> 决策证据 · 链路可追溯</h2>
+          <span class="muted">最近 trace · 谁在什么场景下用哪个模型版本给了什么结论</span>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">分组口径：
+            <select id="signals-trace-groupby">
+              <option value="fallback_used">fallback</option>
+              <option value="model_version">model_version</option>
+              <option value="market_regime">market_regime</option>
+              <option value="verdict">verdict</option>
+            </select>
+          </label>
+          <div id="signals-trace-group-summary" class="muted">分组中…</div>
+        </div>
+        <div id="signals-trace-list" class="table-wrap"></div>
+        <div id="signals-trace-detail" class="quote-box" style="margin-top: 16px;"></div>
+        <div class="signal-evidence-grid">
+          <section class="audit-chart-card">
+            <h3>Fallback 组对比</h3>
+            <div id="signals-fallback-summary" class="quote-box"></div>
+          </section>
+          <section class="audit-chart-card">
+            <h3>Trace 分组对比</h3>
+            <canvas id="signals-trace-group-chart" height="180"></canvas>
+          </section>
+        </div>
+      </section>
+
+      <!-- ░░░ 细节（默认折叠） ░░░ -->
+
+      <!-- ⑥ 决策审计 -->
+      <section class="card signals-collapsible" data-section-key="audit">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">⑥</span> 决策审计</h2>
+          <span class="muted">模型版本 · fallback · 输入快照完整率 · 基线覆盖率</span>
+        </div>
+        <div id="signals-audit-summary" class="signal-mini-grid"></div>
+        <div id="signals-audit-meta" class="quote-box" style="margin-top: 16px;"></div>
+        <div class="signal-audit-viz">
+          <div id="signals-audit-bars" class="audit-bars"></div>
+          <div id="signals-audit-matrix" class="audit-matrix"></div>
+        </div>
+        <div id="signals-audit-timeline" class="audit-timeline" style="margin-top: 16px;"></div>
+        <div class="signal-evidence-grid" style="margin-top: 16px;">
+          <section class="audit-chart-card">
+            <h3>Trace 差异矩阵</h3>
+            <div id="signals-trace-diff-matrix" class="audit-matrix"></div>
+          </section>
+        </div>
+      </section>
+
+      <!-- ⑦ 一致性核验 -->
+      <section class="card signals-collapsible" data-section-key="consistency">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">⑦</span> 一致性核验</h2>
+          <span class="muted">decision trace ↔ market signal ↔ backtest run</span>
+        </div>
+        <div id="signals-consistency-summary" class="signal-mini-grid"></div>
+        <div id="signals-consistency-issues" class="quote-box" style="margin-top: 16px;"></div>
+        <div id="signals-linked-backtests" class="table-wrap" style="margin-top: 16px;"></div>
+      </section>
+
+      <!-- ⑧ 归因分析 -->
+      <section class="card signals-collapsible" data-section-key="attribution">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">⑧</span> 归因分析</h2>
+          <span class="muted">把今日信号拆成 rebalance / score IC / holdings 三个维度的真实贡献</span>
+        </div>
+        <div class="signal-run-toolbar">
+          <label class="muted"><input id="signals-run-filter-completed" type="checkbox" checked /> 仅 completed</label>
+          <label class="muted"><input id="signals-run-filter-attribution" type="checkbox" /> 仅有 attribution</label>
+          <label class="muted">Run 排序：
+            <select id="signals-run-sort">
+              <option value="alpha">alpha</option>
+              <option value="turnover">turnover</option>
+              <option value="ic_ir">IC IR</option>
+              <option value="beta">beta</option>
+              <option value="created_at">created_at</option>
+            </select>
+          </label>
+          <label class="muted">Trace 分组：
+            <select id="signals-global-trace-groupby">
+              <option value="fallback_used">fallback</option>
+              <option value="model_version">model_version</option>
+              <option value="market_regime">market_regime</option>
+              <option value="verdict">verdict</option>
+            </select>
+          </label>
+          <label class="muted">Run 排序（全局）：
+            <select id="signals-global-run-sort">
+              <option value="alpha">alpha</option>
+              <option value="turnover">turnover</option>
+              <option value="ic_ir">IC IR</option>
+              <option value="beta">beta</option>
+              <option value="created_at">created_at</option>
+            </select>
+          </label>
+          <div id="signals-runs-compare-summary" class="muted">过滤中…</div>
+        </div>
+        <div class="signal-evidence-grid">
+          <section class="audit-chart-card">
+            <h3>归因指标图</h3>
+            <canvas id="signals-attribution-chart" height="180"></canvas>
+          </section>
+          <section class="audit-chart-card">
+            <h3>多 Run 对比</h3>
+            <canvas id="signals-runs-compare-chart" height="180"></canvas>
+          </section>
+        </div>
+        <div id="signals-runs-peer-summary" class="quote-box" style="margin-top: 16px;"></div>
+        <div id="signals-backtest-attribution" class="table-wrap" style="margin-top: 16px;"></div>
+        <div id="signals-backtest-modules" class="signal-modules-grid" style="margin-top: 16px;"></div>
+        <div class="signal-modules-charts">
+          <section class="audit-chart-card">
+            <h3>Rebalance</h3>
+            <canvas id="signals-module-rebalance-chart" height="160"></canvas>
+          </section>
+          <section class="audit-chart-card">
+            <h3>Score IC</h3>
+            <canvas id="signals-module-scoreic-chart" height="160"></canvas>
+          </section>
+          <section class="audit-chart-card">
+            <h3>Holdings</h3>
+            <canvas id="signals-module-holdings-chart" height="160"></canvas>
+          </section>
+        </div>
+        <div id="signals-attribution-module-details" class="table-wrap" style="margin-top: 16px;"></div>
+        <div id="signals-backtest-attribution-raw" class="quote-box" style="margin-top: 16px;"></div>
+      </section>
+
+      <!-- ⑨ 决策钻取 -->
+      <section class="card signals-collapsible" data-section-key="drilldown">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">⑨</span> 决策钻取</h2>
+          <span class="muted">选中 trace 后联动 signal / backtest / 结构分布</span>
+        </div>
+        <div id="signals-drilldown-chain" class="audit-drilldown-chain"></div>
+        <div id="signals-drilldown-notes" class="quote-box" style="margin-top: 16px;"></div>
+        <div class="signal-evidence-grid">
+          <section class="audit-chart-card">
+            <h3>个股证据映射</h3>
+            <div id="signals-evidence-map" class="table-wrap"></div>
+          </section>
+          <section class="audit-chart-card">
+            <h3>Run 推荐解释</h3>
+            <div id="signals-run-recommendation" class="quote-box"></div>
+          </section>
+        </div>
+        <div class="signal-evidence-grid" style="margin-top: 16px;">
+          <section class="audit-chart-card">
+            <h3>个股级 Trace-Run 对照</h3>
+            <div id="signals-stock-review" class="table-wrap"></div>
+          </section>
+          <section class="audit-chart-card">
+            <h3>调仓段复盘</h3>
+            <div id="signals-segment-review" class="table-wrap"></div>
+          </section>
+        </div>
+        <div class="signal-evidence-grid" style="margin-top: 16px;">
+          <section class="audit-chart-card">
+            <h3>多 Trace 横向对照</h3>
+            <div id="signals-trace-compare" class="table-wrap"></div>
+          </section>
+          <section class="audit-chart-card">
+            <h3>个股差异视图</h3>
+            <div id="signals-stock-diff" class="table-wrap"></div>
+          </section>
+        </div>
+        <div class="signal-evidence-grid" style="margin-top: 16px;">
+          <section class="audit-chart-card">
+            <h3>Run 排序变化解释</h3>
+            <div id="signals-run-rank-diff" class="table-wrap"></div>
+          </section>
+          <section class="audit-chart-card">
+            <h3>Segment 横向比较</h3>
+            <div id="signals-segment-compare" class="table-wrap"></div>
+          </section>
+        </div>
+        <div id="signals-trace-attribution-bridge" class="quote-box" style="margin-top: 16px;"></div>
+      </section>
+    </div>
+
+    <!-- Tab: 回测 -->
+    <div class="tab-panel" data-tab="backtest">
+      <!-- 头图：回测配置 -->
+      <section class="card backtest-hero">
+        <div class="signal-hero-head">
+          <div>
+            <div class="signal-eyebrow">BACKTEST ENGINE</div>
+            <h2 class="signal-h1">回测引擎 <span class="muted" style="font-size:14px;">配置 · 执行 · 归因</span></h2>
+            <p class="signal-sub">默认：沪深 300 / 近 1 年 / 周度调仓 / Top 20</p>
+          </div>
+          <div class="signal-hero-actions">
+            <button id="bt-reset" class="signal-btn-ghost">↺ 重置默认</button>
+            <button id="bt-run" class="signal-btn-primary">▶ 运行回测</button>
+            <button id="bt-4x30" class="signal-btn-primary" style="background: linear-gradient(135deg, #28a745 0%, #16a34a 100%);">📊 4×30 对比</button>
+            <button id="bt-history" class="signal-btn-ghost">📜 历史</button>
+          </div>
+        </div>
+
+        <!-- 配置区（核心） -->
+        <div class="signal-trace-toolbar" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); display:grid;">
+          <label class="muted">策略：
+            <select id="bt-strategy"></select>
+          </label>
+          <label class="muted">股票池：
+            <select id="bt-universe"></select>
+          </label>
+          <label class="muted">基准：
+            <select id="bt-benchmark">
+              <option value="">无（不对比）</option>
+              <option value="000300.SH">沪深 300 (000300.SH)</option>
+              <option value="000905.SH">中证 500 (000905.SH)</option>
+              <option value="000852.SH">中证 1000 (000852.SH)</option>
+              <option value="399006.SZ">创业板指 (399006.SZ)</option>
+              <option value="000016.SH">上证 50 (000016.SH)</option>
+            </select>
+          </label>
+          <label class="muted">调仓频率：
+            <select id="bt-freq">
+              <option value="daily">日度 (Daily)</option>
+              <option value="weekly" selected>周度 (Weekly)</option>
+              <option value="monthly">月度 (Monthly)</option>
+            </select>
+          </label>
+          <label class="muted">持仓 N：
+            <input id="bt-topn" type="number" value="20" min="1" max="100" style="width: 70px;" />
+          </label>
+        </div>
+        <div class="signal-trace-toolbar" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); display:grid;">
+          <label class="muted">起始日期：
+            <input id="bt-start" type="date" />
+          </label>
+          <label class="muted">结束日期：
+            <input id="bt-end" type="date" />
+          </label>
+          <label class="muted">初始资金 (元)：
+            <input id="bt-capital" type="number" value="1000000" min="10000" step="10000" style="width: 130px;" />
+          </label>
+          <label class="muted">
+            <input id="bt-async" type="checkbox" /> 异步执行（不阻塞 UI）
+          </label>
+        </div>
+        <div id="bt-status" class="alert-bar" style="margin-top: 12px;"></div>
+      </section>
+
+      <!-- ① 结果摘要：核心指标 + 净值曲线 -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">①</span> 回测结果</h2>
+          <span class="muted">关键指标 + 净值曲线</span>
+        </div>
+        <div id="bt-metrics" class="signal-mini-grid" style="margin-bottom: 20px;"></div>
+        <canvas id="bt-nav-chart" height="120"></canvas>
+        <p class="muted" style="font-size:12px; margin-top: 12px; text-align: center;">净值曲线（红点 = 实际调仓日，鼠标悬停查看详情）</p>
+      </section>
+
+      <!-- ② 成本明细 + 基准对比（双列） -->
+      <div class="signal-row-2" style="grid-template-columns: 1fr 1fr;">
+        <section class="card">
+          <div class="signal-section-head">
+            <h2><span class="signal-num">②</span> 交易成本</h2>
+            <span class="muted">commission / stamp_tax / slippage</span>
+          </div>
+          <div id="bt-cost" class="signal-mini-grid"></div>
+        </section>
+        <section class="card">
+          <div class="signal-section-head">
+            <h2><span class="signal-num">③</span> 基准对比</h2>
+            <span class="muted">α / β / R²</span>
+          </div>
+          <div id="bt-benchmark-detail" class="signal-mini-grid"></div>
+        </section>
+      </div>
+
+      <!-- ④ 归因 + 4×30（折叠，仅在有数据时显示） -->
+      <section class="card signals-collapsible" data-section-key="bt-attribution" id="bt-attribution-card" style="display: none;">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">④</span> 归因分析</h2>
+          <span class="muted">调仓成本分解 / 持仓贡献 / 行业偏离</span>
+        </div>
+        <div id="bt-attribution" class="table-wrap"></div>
+      </section>
+
+      <section class="card signals-collapsible" data-section-key="bt-4x30" id="bt-4x30-card" style="display: none;">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">⑤</span> 4×30 策略对比</h2>
+          <span class="muted">4 策略 × 30 只 HS300 · 近 1 年 · nav 归一化</span>
+        </div>
+        <div class="signal-trace-toolbar">
+          <span id="bt-4x30-meta" class="muted">点击「📊 4×30 对比」生成</span>
+        </div>
+        <div id="bt-4x30-table" class="table-wrap"></div>
+        <canvas id="bt-4x30-chart" height="160"></canvas>
+      </section>
+
+      <!-- ⑥ 调仓记录 + 数据跳过（双列） -->
+      <div class="signal-row-2" style="grid-template-columns: 2fr 1fr;">
+        <section class="card">
+          <div class="signal-section-head">
+            <h2><span class="signal-num">⑥</span> 调仓记录</h2>
+            <span class="muted">最多展示前 30 条</span>
+          </div>
+          <div id="bt-trades" class="table-wrap" style="max-height: 400px; overflow-y: auto;"></div>
+        </section>
+        <section class="card">
+          <div class="signal-section-head">
+            <h2><span class="signal-num">⑦</span> 数据跳过</h2>
+            <span class="muted">数据缺失或不足 30 根 K 线</span>
+          </div>
+          <div id="bt-skipped" class="table-wrap" style="max-height: 400px; overflow-y: auto;"></div>
+        </section>
+      </div>
+
+      <!-- ⑧ 历史 run 列表（折叠） -->
+      <section class="card signals-collapsible" data-section-key="bt-history">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">⑧</span> 历史回测</h2>
+          <span class="muted">最多 50 条 · job_id 可点入查归因</span>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">状态：
+            <select id="bt-history-status">
+              <option value="">全部</option>
+              <option value="pending">pending</option>
+              <option value="running">running</option>
+              <option value="completed">completed</option>
+              <option value="failed">failed</option>
+              <option value="cancelled">cancelled</option>
+            </select>
+          </label>
+          <label class="muted">策略：
+            <input id="bt-history-strategy" type="text" placeholder="(策略名)" style="width: 180px;" />
+          </label>
+          <button id="bt-history-refresh" class="signal-btn-ghost">↻ 刷新</button>
+        </div>
+        <div id="bt-history-table" class="table-wrap"></div>
+      </section>
+    </div>
+
+    <!-- Tab: 数据源健康监控（告警） -->
+    <div class="tab-panel" data-tab="health">
+      <!-- 头图：数据源健康 -->
+      <section class="card health-hero">
+        <div class="signal-hero-head">
+          <div>
+            <div class="signal-eyebrow">DATA SOURCE HEALTH</div>
+            <h2 class="signal-h1">数据源健康监控 <span class="muted" style="font-size:14px;">success / failure / 耗时 / 告警</span></h2>
+            <p class="signal-sub">覆盖全部 Provider × Method 的 I/O 采样 · 异常即时上色</p>
+          </div>
+          <div class="signal-hero-actions">
+            <button id="health-refresh" class="signal-btn-primary">↻ 刷新</button>
+          </div>
+        </div>
+        <div id="health-summary" class="signal-mini-grid" style="margin-top: 20px;"></div>
+        <div id="health-alert-bar" class="alert-bar" style="margin-top: 12px;"></div>
+      </section>
+
+      <!-- ① 端点详情 -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">①</span> 端点详情</h2>
+          <span class="muted">success / failure / 耗时 / 告警</span>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">Provider：
+            <select id="health-provider-filter"><option value="">全部</option></select>
+          </label>
+          <label class="muted">Method：
+            <select id="health-method-filter"><option value="">全部</option></select>
+          </label>
+          <label class="muted">
+            <input id="health-alert-only" type="checkbox" /> 仅显示告警项
+          </label>
+        </div>
+        <div id="health-detail-table" class="table-wrap"></div>
+      </section>
+
+      <!-- ② I/O 样本（折叠） -->
+      <section class="card signals-collapsible" data-section-key="health-io">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">②</span> 最近一次 I/O <span class="muted" style="font-weight:400">输入与输出 · 选中端点后查看</span></h2>
+        </div>
+        <div class="signal-evidence-grid">
+          <section class="audit-chart-card">
+            <h3>最近一次输入 (Request)</h3>
+            <div id="health-request-sample" class="log-panel">等待选择数据源端点...</div>
+          </section>
+          <section class="audit-chart-card">
+            <h3>最近一次输出 / 错误 (Response)</h3>
+            <div id="health-response-sample" class="log-panel">等待选择数据源端点...</div>
+          </section>
+        </div>
+      </section>
+    </div>
+
+    <!-- Tab: 高级分析 (P5.2 walk-forward + 蒙特卡洛) -->
+    <div class="tab-panel" data-tab="analysis">
+      <!-- 头图：高级分析 -->
+      <section class="card analysis-hero">
+        <div class="signal-hero-head">
+          <div>
+            <div class="signal-eyebrow">ADVANCED ANALYTICS</div>
+            <h2 class="signal-h1">高级分析 <span class="muted" style="font-size:14px;">Walk-Forward + 蒙特卡洛</span></h2>
+            <p class="signal-sub">评估策略的 OOS 稳定性 · 评估尾部风险 · 真实分布可视化</p>
+          </div>
+          <div class="signal-hero-actions">
+            <button id="wf-run" class="signal-btn-primary">▶ 跑 WF</button>
+            <button id="mc-run" class="signal-btn-primary" style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);">🎲 跑 MC</button>
+            <button id="wf-random" class="signal-btn-ghost">🎲 随机收益</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ① Walk-Forward（核心） -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">①</span> Walk-Forward 滚动验证</h2>
+          <span class="muted">OOS 稳定性 · hit_rate · consistency</span>
+        </div>
+        <div class="signal-trace-toolbar" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+          <label class="muted">折数：<input id="wf-folds" type="number" value="5" min="1" max="20" style="width: 70px;" /></label>
+          <label class="muted">训练占比：<input id="wf-train-pct" type="number" value="0.6" min="0.1" max="0.9" step="0.05" style="width: 80px;" /></label>
+          <label class="muted"><input id="wf-anchored" type="checkbox" checked /> Anchored 模式</label>
+        </div>
+        <label class="muted" style="font-size: 12px; margin-top: 8px; display: block;">日收益序列（10-1000 个）</label>
+        <textarea id="wf-returns" rows="3" style="width:100%; font-family:monospace; font-size:12px; margin-top: 6px;"
+          placeholder="0.001,-0.002,0.0015,0.003,-0.0005,...">0.001,-0.002,0.0015,0.003,-0.0005,0.002,0.001,-0.001,0.0005,-0.0008,0.002,0.0012,0.0008,-0.0003,0.001,0.0009,-0.0006,0.0011,0.0007,-0.0004,0.0009,0.0006,0.001,0.0005,0.0008,-0.0003,0.0006,0.001,0.0004,0.0007,0.0009,0.0005,-0.0002,0.0006,0.0008,0.0004,0.0005,0.0003,0.0006,0.0004,0.0002,0.0005,0.0003,0.0004,0.0002,0.0003,0.0002,0.0004,0.0001,0.0003,0.0002</textarea>
+        <div id="wf-status" class="alert-bar" style="margin-top: 12px;"></div>
+        <div id="wf-summary" class="signal-mini-grid" style="margin-top: 12px;"></div>
+        <h3 style="margin-top: 20px; font-size: 13px; color: var(--text-muted);">各折 OOS 指标</h3>
+        <div id="wf-folds-table" class="table-wrap"></div>
+      </section>
+
+      <!-- ② 蒙特卡洛（折叠） -->
+      <section class="card signals-collapsible" data-section-key="analysis-mc">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">②</span> 蒙特卡洛模拟</h2>
+          <span class="muted">block bootstrap · VaR95 · CVaR95 · 收益分布</span>
+        </div>
+        <div class="signal-trace-toolbar" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+          <label class="muted">模拟次数：<input id="mc-sims" type="number" value="500" min="1" max="5000" style="width: 80px;" /></label>
+          <label class="muted">路径长度(日)：<input id="mc-horizon" type="number" value="252" min="1" max="2000" style="width: 90px;" /></label>
+          <label class="muted">块大小：<input id="mc-block" type="number" value="5" min="1" max="50" style="width: 70px;" /></label>
+          <label class="muted">随机种子：<input id="mc-seed" type="number" value="42" style="width: 80px;" /></label>
+        </div>
+        <label class="muted" style="font-size: 12px; margin-top: 8px; display: block;">历史日收益（逗号分隔）</label>
+        <textarea id="mc-returns" rows="3" style="width:100%; font-family:monospace; font-size:12px; margin-top: 6px;"
+          placeholder="0.001,0.002,...">0.001,-0.002,0.0015,0.003,-0.0005,0.002,0.001,-0.001,0.0005,-0.0008,0.002,0.0012,0.0008,-0.0003,0.001,0.0009,-0.0006,0.0011,0.0007,-0.0004,0.0009,0.0006,0.001,0.0005,0.0008,-0.0003,0.0006,0.001,0.0004,0.0007,0.0009,0.0005,-0.0002,0.0006,0.0008,0.0004,0.0005,0.0003,0.0006,0.0004,0.0002,0.0005,0.0003,0.0004,0.0002,0.0003,0.0002,0.0004,0.0001,0.0003,0.0002,0.00015,0.00025,0.0001,0.0002,0.00005,0.0001,0.0002,0.0003,0.00015,0.0001,0.0002,0.00005,0.00015,0.0001,0.0002,0.0001,0.00005,0.0001,0.00015,0.0001,0.00005,0.0001,0.00005,0.0001,0.0001,0.00005,0.0001,0.0001,0.00005,0.0001,0.00005</textarea>
+        <div id="mc-status" class="alert-bar" style="margin-top: 12px;"></div>
+        <div id="mc-summary" class="signal-mini-grid" style="margin-top: 12px;"></div>
+        <h3 style="margin-top: 20px; font-size: 13px; color: var(--text-muted);">收益分布（年化收益概率密度）</h3>
+        <canvas id="mc-dist-chart" height="140"></canvas>
+      </section>
+    </div>
+
+    <!-- Tab: 告警 (P3.5) -->
+    <div class="tab-panel" data-tab="alerts">
+      <!-- 头图：告警中心 -->
+      <section class="card alerts-hero">
+        <div class="signal-hero-head">
+          <div>
+            <div class="signal-eyebrow">ALERTING CENTER</div>
+            <h2 class="signal-h1">监控告警 <span class="muted" style="font-size:14px;">通道 / 规则 / 事件 / 自定义</span></h2>
+            <p class="signal-sub">基于真实指标的阈值触发 · Webhook / 日志 / 自定义投递</p>
+          </div>
+          <div class="signal-hero-actions">
+            <button id="alert-test" class="signal-btn-primary" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);">▶ 手动评估</button>
+            <button id="alert-list-channels" class="signal-btn-ghost">↻ 刷新</button>
+            <button id="alert-list-rules" class="signal-btn-ghost">↻ 刷新规则</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ① 告警通道（核心） -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">①</span> 告警通道</h2>
+          <span class="muted">webhook / log / noop</span>
+        </div>
+        <div id="alert-channels-table" class="table-wrap"></div>
+        <h3 style="margin-top: 20px; font-size: 13px; color: var(--text-muted);">+ 新增 Webhook 通道</h3>
+        <div class="signal-trace-toolbar">
+          <label class="muted">名称：<input id="alert-ch-name" type="text" placeholder="ops-feishu" style="width: 160px;" /></label>
+          <label class="muted" style="flex: 1;">URL：<input id="alert-ch-url" type="text" placeholder="https://open.feishu.cn/hook/..." style="width: 100%;" /></label>
+          <button id="alert-ch-add" class="signal-btn-primary">+ 添加</button>
+        </div>
+      </section>
+
+      <!-- ② 告警规则（折叠） -->
+      <section class="card signals-collapsible" data-section-key="alerts-rules">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">②</span> 告警规则</h2>
+          <span class="muted">threshold + comparator</span>
+        </div>
+        <div id="alert-rules-table" class="table-wrap"></div>
+      </section>
+
+      <!-- ③ 自定义告警（折叠） -->
+      <section class="card signals-collapsible" data-section-key="alerts-custom">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">③</span> 自定义告警</h2>
+          <span class="muted">外部系统接入 / 测试</span>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">规则名：<input id="alert-d-rule" type="text" value="manual_test" style="width: 160px;" /></label>
+          <label class="muted">级别：
+            <select id="alert-d-level">
+              <option value="info">info</option>
+              <option value="warn" selected>warn</option>
+              <option value="error">error</option>
+              <option value="critical">critical</option>
+            </select>
+          </label>
+          <label class="muted" style="flex: 1;">消息：<input id="alert-d-msg" type="text" value="手动测试告警" style="width: 100%;" /></label>
+          <button id="alert-d-go" class="signal-btn-primary">投递</button>
+        </div>
+      </section>
+
+      <!-- ④ 告警历史（折叠） -->
+      <section class="card signals-collapsible" data-section-key="alerts-history">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">④</span> 告警历史</h2>
+          <span class="muted">最近 50 条</span>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">条数：<input id="alert-hist-limit" type="number" value="50" min="1" max="500" style="width: 80px;" /></label>
+          <button id="alert-hist-refresh" class="signal-btn-ghost">↻ 刷新</button>
+        </div>
+        <div id="alert-history-table" class="table-wrap"></div>
+      </section>
+    </div>
+
+    <!-- Tab: 监控 (P3.4) -->
+    <div class="tab-panel" data-tab="monitor">
+      <!-- 头图：系统追踪 -->
+      <section class="card monitor-hero">
+        <div class="signal-hero-head">
+          <div>
+            <div class="signal-eyebrow">SYSTEM OBSERVABILITY</div>
+            <h2 class="signal-h1">系统追踪 <span class="muted" style="font-size:14px;">元信息 / 指标 / Trace</span></h2>
+            <p class="signal-sub">App 元信息 · Prometheus /metrics · OTel Trace 真实链路</p>
+          </div>
+          <div class="signal-hero-actions">
+            <button id="mon-info" class="signal-btn-ghost">↻ 元信息</button>
+            <button id="mon-metrics-summary" class="signal-btn-ghost">↻ 关键指标</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ① App 元信息 + 关键指标（核心） -->
+      <div class="signal-row-2" style="grid-template-columns: 1fr 1fr;">
+        <section class="card">
+          <div class="signal-section-head">
+            <h2><span class="signal-num">①</span> App 元信息</h2>
+            <span class="muted">version / env / uptime</span>
+          </div>
+          <div id="mon-info-cards" class="signal-mini-grid"></div>
+        </section>
+        <section class="card">
+          <div class="signal-section-head">
+            <h2><span class="signal-num">②</span> 关键指标</h2>
+            <span class="muted">Prometheus /metrics 汇总</span>
+          </div>
+          <div id="mon-metrics-summary" class="table-wrap"></div>
+        </section>
+      </div>
+
+      <!-- ③ Trace（折叠） -->
+      <section class="card signals-collapsible" data-section-key="monitor-trace">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">③</span> Trace 链路</h2>
+          <span class="muted">最近 N 个 span · HTTP / LLM / DataRouter</span>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">条数：<input id="mon-trace-limit" type="number" value="30" min="1" max="200" style="width: 80px;" /></label>
+          <button id="mon-trace" class="signal-btn-primary">拉取</button>
+        </div>
+        <div id="mon-trace-table" class="table-wrap"></div>
+      </section>
+
+      <!-- ④ 完整指标文本（折叠） -->
+      <section class="card signals-collapsible" data-section-key="monitor-raw">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">④</span> 完整 /metrics 文本</h2>
+          <span class="muted">text/plain · 长输出</span>
+        </div>
+        <div class="signal-trace-toolbar">
+          <button id="mon-metrics-text" class="signal-btn-primary">查看完整文本</button>
+        </div>
+        <pre id="mon-metrics-raw" style="max-height: 400px; overflow-y: auto; background: #0e1116; color: #c9d1d9; padding: 12px; border-radius: 6px; font-size: 11px;"></pre>
+      </section>
+    </div>
+
+    <!-- Tab: 运维 (P5.3 多租户 + 数据保留) -->
+    <div class="tab-panel" data-tab="ops">
+      <!-- 头图：运维管理 -->
+      <section class="card ops-hero">
+        <div class="signal-hero-head">
+          <div>
+            <div class="signal-eyebrow">OPS & DATA LIFECYCLE</div>
+            <h2 class="signal-h1">运维管理 <span class="muted" style="font-size:14px;">多租户 / 数据保留 / 清理</span></h2>
+            <p class="signal-sub">每租户数据量 · retain_days / min_rows 策略 · Dry-run 优先</p>
+          </div>
+          <div class="signal-hero-actions">
+            <button id="ops-tenant-refresh" class="signal-btn-ghost">↻ 租户</button>
+            <button id="ops-retention-status" class="signal-btn-ghost">↻ 策略</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ① 多租户（核心） -->
+      <section class="card">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">①</span> 多租户</h2>
+          <span class="muted">每租户数据量</span>
+        </div>
+        <div class="signal-trace-toolbar">
+          <label class="muted">tenant_id 查询：<input id="ops-tenant-id" type="text" placeholder="(留空列全部)" style="width: 220px;" /></label>
+        </div>
+        <div id="ops-tenants-table" class="table-wrap"></div>
+      </section>
+
+      <!-- ② 数据保留 + 清理（折叠） -->
+      <section class="card signals-collapsible" data-section-key="ops-retention">
+        <div class="signal-section-head">
+          <h2><span class="signal-num">②</span> 数据保留策略 + 清理</h2>
+          <span class="muted">retain_days / min_rows · Dry-run 优先</span>
+        </div>
+        <div id="ops-retention-table" class="table-wrap"></div>
+        <h3 style="margin-top: 20px; font-size: 13px; color: var(--text-muted);">执行清理</h3>
+        <div class="signal-trace-toolbar">
+          <label class="muted"><input id="ops-retention-dryrun" type="checkbox" checked /> Dry-run（不真删）</label>
+          <button id="ops-retention-run" class="signal-btn-primary" style="background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">▶ 执行</button>
+        </div>
+        <div id="ops-retention-result" class="alert-bar" style="margin-top: 12px;"></div>
+      </section>
+    </div>
+        </main>
+    </div>
+  </div>
+
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
