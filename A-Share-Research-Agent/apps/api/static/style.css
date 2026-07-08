@@ -893,6 +893,110 @@ canvas {
   .signal-evidence-grid { grid-template-columns: 1fr; }
 }
 
+/* ── P2-T11/P2-T12: 当前 strategy 切换条 ────────────── */
+.signal-strategy-strip {
+  margin-top: 16px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.06), rgba(168, 85, 247, 0.06));
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 8px;
+}
+.signal-strategy-eyebrow {
+  font-size: 11px;
+  color: #a78bfa;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.signal-strategy-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.signal-strategy-current {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.signal-strategy-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  font-family: var(--font-mono);
+}
+.signal-strategy-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* P2-T12 弹层 */
+.signal-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(4px);
+}
+.signal-modal-content {
+  background: var(--bg-elevated, #0f172a);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: min(960px, 92vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+.signal-modal-head {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.signal-modal-head h3 {
+  margin: 0;
+  font-size: 15px;
+  color: var(--text);
+}
+.signal-modal-body {
+  padding: 12px 16px;
+  overflow-y: auto;
+}
+.signal-strategy-row {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.signal-strategy-row:hover {
+  background: rgba(99, 102, 241, 0.1);
+}
+.signal-strategy-row.is-active {
+  background: rgba(251, 191, 36, 0.08);
+  border-left: 3px solid #fbbf24;
+}
+.signal-strategy-mode-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.signal-strategy-mode-tag.manual { background: #1e293b; color: #94a3b8; }
+.signal-strategy-mode-tag.auto_best_sharpe { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+.signal-strategy-mode-tag.auto_best_annual_return { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+.signal-strategy-mode-tag.auto_best_total_return { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
+
 /* ── P0-T6: 宏观环境 tab（紫色 hero） ────────────── */
 .macro-hero {
   background: linear-gradient(135deg, #6d28d9 0%, #a855f7 60%, #c084fc 100%) !important;
@@ -1665,8 +1769,3 @@ canvas {
   color: var(--text-muted);
   font-size: 13px;
 }
-
-/* P1-T13 watchlist cross-tab linkage */
-.watchlist-marker { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: #020617; padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 11px; }
-.watchlist-marker::before { content: '★ '; }
-#stock-watchlist-status { transition: opacity 0.2s; }

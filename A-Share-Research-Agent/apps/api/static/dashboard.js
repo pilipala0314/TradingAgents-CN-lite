@@ -3814,6 +3814,8 @@ function switchTab(tabName) {
   } else if (tabName === "signals") {
     if (!_signalsCache) loadSignals();
     loadSchedulerStatus();
+    // P2-T12: 拉取当前 strategy 状态
+    loadCurrentStrategy();
     // P1-T13: 标星 watchlist 标的
     setTimeout(_highlightWatchlistSymbols, 200);
   } else if (tabName === "watchlist") {
@@ -6118,6 +6120,190 @@ async function registerModel() {
 }
 
 // ════════════════════════════════════════════════════════════════
+// P2-T11/P2-T12/P2-T13 当前 strategy 切换（signals tab）
+// ════════════════════════════════════════════════════════════════
+
+async function loadCurrentStrategy() {
+  try {
+    const r = await fetch("/api/dashboard/signals/current_strategy");
+    if (!r.ok) {
+      _renderCurrentStrategyEmpty();
+      return;
+    }
+    const data = await r.json();
+    if (!data.active || !data.config) {
+      _renderCurrentStrategyEmpty();
+      return;
+    }
+    _renderCurrentStrategy(data.config);
+  } catch (e) {
+    _renderCurrentStrategyError(e);
+  }
+}
+
+function _renderCurrentStrategyEmpty() {
+  const nameEl = document.getElementById("signals-strategy-name");
+  const metaEl = document.getElementById("signals-strategy-meta");
+  if (nameEl) nameEl.innerText = "— 未配置 —";
+  if (metaEl) metaEl.innerText = "回测完成后可点击「切换 strategy」激活";
+}
+
+function _renderCurrentStrategyError(e) {
+  const nameEl = document.getElementById("signals-strategy-name");
+  const metaEl = document.getElementById("signals-strategy-meta");
+  if (nameEl) nameEl.innerText = "加载失败";
+  if (metaEl) metaEl.innerText = (e && e.message) || String(e);
+}
+
+function _renderCurrentStrategy(cfg) {
+  const nameEl = document.getElementById("signals-strategy-name");
+  const metaEl = document.getElementById("signals-strategy-meta");
+  if (!nameEl || !metaEl) return;
+  const universe = cfg.universe_code || "—";
+  const snap = cfg.metrics_snapshot || {};
+  const sharpe = snap.sharpe != null ? `sharpe=${snap.sharpe.toFixed(2)}` : "";
+  const ret = snap.annual_return != null ? `annual=${(snap.annual_return * 100).toFixed(1)}%` : "";
+  const mdd = snap.max_drawdown != null ? `mdd=${(snap.max_drawdown * 100).toFixed(1)}%` : "";
+  const metrics = [sharpe, ret, mdd].filter(Boolean).join(" · ");
+  nameEl.innerText = `${cfg.strategy_name} · ${universe}`;
+  metaEl.innerText =
+    `选于 ${cfg.selected_at ? new Date(cfg.selected_at).toLocaleString("zh-CN") : "—"}` +
+    ` · ${cfg.selection_mode}${metrics ? " · " + metrics : ""}`;
+}
+
+async function openStrategySwitcher() {
+  const modal = document.getElementById("signals-strategy-modal");
+  const list = document.getElementById("signals-strategy-history-list");
+  if (!modal || !list) return;
+  modal.style.display = "flex";
+  list.innerHTML = "加载中…";
+  try {
+    const r = await fetch("/api/dashboard/signals/strategy_history?limit=30");
+    if (!r.ok) {
+      list.innerHTML = `<p class="muted">加载失败：HTTP ${r.status}</p>`;
+      return;
+    }
+    const data = await r.json();
+    _renderStrategyHistoryList(data.items || []);
+  } catch (e) {
+    list.innerHTML = `<p class="muted">加载失败：${e.message || e}</p>`;
+  }
+}
+
+function closeStrategySwitcher() {
+  const modal = document.getElementById("signals-strategy-modal");
+  if (modal) modal.style.display = "none";
+}
+
+function _renderStrategyHistoryList(items) {
+  const list = document.getElementById("signals-strategy-history-list");
+  if (!list) return;
+  if (!items.length) {
+    list.innerHTML = `<p class="muted" style="padding:24px; text-align:center;">暂无历史 strategy 记录。请先在「回测引擎」跑至少一个 run，再回到这里切换。</p>`;
+    return;
+  }
+  const rows = items
+    .map((cfg) => {
+      const activeCls = cfg.is_active ? "is-active" : "";
+      const modeTag = `<span class="signal-strategy-mode-tag ${cfg.selection_mode}">${cfg.selection_mode}</span>`;
+      const universe = cfg.universe_code || "—";
+      const snap = cfg.metrics_snapshot || {};
+      const sharpe = snap.sharpe != null ? snap.sharpe.toFixed(2) : "—";
+      const ret = snap.annual_return != null ? (snap.annual_return * 100).toFixed(1) + "%" : "—";
+      const mdd = snap.max_drawdown != null ? (snap.max_drawdown * 100).toFixed(1) + "%" : "—";
+      const runIdShort = cfg.run_id ? cfg.run_id.substring(0, 8) : "—";
+      return `
+        <tr class="signal-strategy-row ${activeCls}" data-run-id="${cfg.run_id || ""}">
+          <td>${modeTag}${cfg.is_active ? ' <span style="color:#fbbf24; font-size:11px;">✓ ACTIVE</span>' : ""}</td>
+          <td><b style="color:#60a5fa;">${cfg.strategy_name}</b> · <span class="muted">${universe}</span></td>
+          <td>${cfg.tenant_id || "—"}</td>
+          <td class="muted" style="font-size:11px;">${cfg.selected_at ? new Date(cfg.selected_at).toLocaleString("zh-CN") : "—"}</td>
+          <td>${sharpe}</td>
+          <td>${ret}</td>
+          <td>${mdd}</td>
+          <td class="muted" style="font-size:11px;">${runIdShort}…</td>
+          <td><button class="signal-btn-primary signal-strategy-apply-btn" data-run-id="${cfg.run_id || ""}" data-strategy="${cfg.strategy_name}" style="padding:3px 8px; font-size:11px;">${cfg.is_active ? "重新激活" : "切换"}</button></td>
+        </tr>`;
+    })
+    .join("");
+  list.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>模式</th>
+          <th>strategy / universe</th>
+          <th>tenant</th>
+          <th>选于</th>
+          <th>sharpe</th>
+          <th>annual</th>
+          <th>mdd</th>
+          <th>run_id</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  // 绑定行内按钮
+  list.querySelectorAll(".signal-strategy-apply-btn").forEach((btn) => {
+    btn.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      const runId = btn.dataset.runId;
+      const strategy = btn.dataset.strategy;
+      if (!runId) {
+        alert("该条记录无关联 run_id（可能是手工指定的非回测 strategy）");
+        return;
+      }
+      await applyStrategy(runId, strategy);
+    });
+  });
+}
+
+async function applyStrategy(runId, strategyName) {
+  if (!confirm(`确定切换为「${strategyName}」？\n当前 active 策略会被关闭，新策略立即生效。`)) return;
+  try {
+    const r = await fetch("/api/dashboard/signals/set_strategy", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        run_id: runId,
+        selected_by: "frontend_user",
+        note: "switched from signals tab",
+      }),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      alert(`切换失败：${t}`);
+      return;
+    }
+    closeStrategySwitcher();
+    await loadCurrentStrategy();
+  } catch (e) {
+    alert(`切换失败：${e.message || e}`);
+  }
+}
+
+async function autoPickBestStrategy() {
+  if (!confirm("🤖 自动从最近 30 天 completed run 中按 sharpe 选 top 1，切换为线上生效？\n（当前 active 策略会被关闭）")) return;
+  try {
+    const r = await fetch("/api/dashboard/signals/auto_pick_best", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ days: 30, metric: "sharpe", selected_by: "frontend_auto" }),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      alert(`自动选择失败：${t}`);
+      return;
+    }
+    const data = await r.json();
+    await loadCurrentStrategy();
+    alert(`已自动选择 run ${(data.picked_run_id || "").substring(0, 8)}… 为线上 strategy`);
+  } catch (e) {
+    alert(`自动选择失败：${e.message || e}`);
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
 // 启动绑定
 // ════════════════════════════════════════════════════════════════
 
@@ -6131,6 +6317,11 @@ function bindAllButtons() {
   bind("models-register", registerModel);
   bind("models-edit-save", saveEdit);
   bind("models-edit-cancel", cancelEdit);
+  // P2-T12 strategy 切换
+  bind("signals-strategy-refresh", loadCurrentStrategy);
+  bind("signals-strategy-switch", openStrategySwitcher);
+  bind("signals-strategy-auto", autoPickBestStrategy);
+  bind("signals-strategy-modal-close", closeStrategySwitcher);
   // analysis
   bind("wf-run", runWalkForward);
   bind("wf-random", () => randomizeReturns("wf-returns"));

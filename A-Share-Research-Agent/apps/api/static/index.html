@@ -451,6 +451,38 @@
         <div class="signal-kpis" id="signals-workbench-summary">汇总加载中…</div>
         <div id="signals-workbench-alerts" class="signal-alerts"></div>
 
+        <!-- P2-T11/P2-T12: 当前 strategy 切换条 -->
+        <div class="signal-strategy-strip" id="signals-strategy-strip">
+          <div class="signal-strategy-eyebrow">⚙️ ACTIVE STRATEGY · 影响本次信号生成的选股/排序逻辑</div>
+          <div class="signal-strategy-content">
+            <div class="signal-strategy-current">
+              <span id="signals-strategy-name" class="signal-strategy-name">— 未配置 —</span>
+              <span id="signals-strategy-meta" class="muted" style="font-size:12px;"></span>
+            </div>
+            <div class="signal-strategy-actions">
+              <button id="signals-strategy-refresh" class="signal-btn-ghost" style="padding:4px 10px; font-size:12px;">↻ 刷新</button>
+              <button id="signals-strategy-switch" class="signal-btn-secondary" style="padding:4px 10px; font-size:12px;">🔧 切换 strategy</button>
+              <button id="signals-strategy-auto" class="signal-btn-secondary" style="padding:4px 10px; font-size:12px;">🤖 自动选最优 (sharpe)</button>
+            </div>
+          </div>
+        </div>
+        <!-- P2-T12 切换 strategy 弹层（默认隐藏） -->
+        <div id="signals-strategy-modal" class="signal-modal" style="display:none;">
+          <div class="signal-modal-content">
+            <div class="signal-modal-head">
+              <h3>切换当前 strategy</h3>
+              <button id="signals-strategy-modal-close" class="signal-btn-ghost" style="padding:2px 8px;">×</button>
+            </div>
+            <div class="signal-modal-body">
+              <p class="muted" style="font-size:12px; margin-bottom: 8px;">
+                从历史已完成的回测 run 中选一个切换为线上生效。
+                点击行 → 立即切换。
+              </p>
+              <div id="signals-strategy-history-list" class="table-wrap" style="max-height: 400px; overflow-y: auto;">加载中…</div>
+            </div>
+          </div>
+        </div>
+
         <!-- P0-T7: 每日信号 cron 监控（scheduler 状态） -->
         <div class="signal-scheduler-strip">
           <div class="signal-scheduler-strip-head">
