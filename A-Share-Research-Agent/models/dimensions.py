@@ -113,3 +113,28 @@ class DimModel(Base):
     tenant_id = Column(String(64), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class FactStrategyConfig(Base):
+    """P2-T11 回测→线上信号衔接：当前生效的 strategy 配置（一行/版本）。
+
+    - 一个 tenant 同时只能有一个 is_active=true 的 config（约束由 service 层保证）
+    - run_id 关联到回测的 FactBacktestRun（可空：手工指定的非回测 strategy）
+    - selection_mode: 'manual' / 'auto_best_sharpe' / 'auto_best_return'
+    - 切换策略时新建一行，旧行 is_active=false（保留审计链）
+    """
+    __tablename__ = "fact_strategy_config"
+
+    config_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    strategy_name = Column(String(128), nullable=False, index=True)
+    universe_code = Column(String(64), nullable=True)
+    params_json = Column(JSONB, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=False, index=True)
+    selection_mode = Column(String(32), nullable=False, default="manual")
+    metrics_snapshot = Column(JSONB, nullable=True)  # 选这个 run 时的关键指标（sharpe/return/drawdown）
+    note = Column(Text, nullable=True)
+    selected_by = Column(String(64), nullable=True)
+    tenant_id = Column(String(64), nullable=True, index=True)
+    selected_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)

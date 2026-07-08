@@ -1,5 +1,11 @@
 from .base import Base
-from .dimensions import DimSector, DimSecurity, MapSecuritySector
+from .dimensions import (
+    DimModel,
+    DimSector,
+    DimSecurity,
+    FactStrategyConfig,
+    MapSecuritySector,
+)
 from .facts import FactCapitalFlow, FactEvent, FactMarketBar, FactRuleHit, OpsJobRun
 from .features import FeatureMarketSnapshot, FeatureSectorSnapshot, FeatureStockSnapshot
 from .macro import FactMacroIndicator, MacroIndicatorCode
@@ -8,6 +14,7 @@ from .watchlist import DimWatchlist, MapWatchlistItem
 
 __all__ = [
     "Base",
+    "DimModel",
     "DimSector",
     "DimSecurity",
     "DimWatchlist",
@@ -19,6 +26,7 @@ __all__ = [
     "FactMarketBar",
     "FactRiskAlert",
     "FactRuleHit",
+    "FactStrategyConfig",
     "FactStrategyOutput",
     "FeatureMarketSnapshot",
     "FeatureSectorSnapshot",

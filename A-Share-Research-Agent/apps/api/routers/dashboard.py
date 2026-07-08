@@ -9,10 +9,12 @@
 from __future__ import annotations
 
 import logging
+import uuid
 from datetime import date as _date
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
@@ -553,6 +555,121 @@ async def stock_financial(
 
 
 # ── P0-T12 申万行业热力图 ─────────────────────────────
+
+
+
+# ── P2-T11/P2-T13 回测 → 线上 signal strategy 衔接 ─────────────────────────────
+
+
+from services.strategy_selector import StrategySelector, serialize_strategy_config
+
+
+class SetStrategyRequest(BaseModel):
+    run_id: str = Field(..., description="回测 run 的 job_id（UUID）")
+    selected_by: str | None = Field(None, description="操作人（前端不传则为 'frontend'）")
+    note: str | None = Field(None, description="备注")
+
+
+class AutoPickRequest(BaseModel):
+    days: int = Field(30, ge=1, le=365, description="回看天数")
+    metric: str = Field("sharpe", description="排序指标: sharpe / annual_return / total_return")
+    selected_by: str | None = Field(None, description="操作人")
+
+
+@router.get("/signals/current_strategy")
+async def get_current_strategy(
+    tenant_id: str | None = Query(None),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """返回当前 tenant 激活的 strategy 配置（手动切换 / 自动最优）。"""
+    sel = StrategySelector(session)
+    cfg = await sel.get_current(tenant_id=tenant_id)
+    if not cfg:
+        return {"active": False, "config": None}
+    return {"active": True, "config": serialize_strategy_config(cfg)}
+
+
+@router.get("/signals/strategy_history")
+async def get_strategy_history(
+    tenant_id: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """返回历史 strategy 配置（按时间倒序）。"""
+    sel = StrategySelector(session)
+    rows = await sel.list_history(tenant_id=tenant_id, limit=limit)
+    return {
+        "items": [serialize_strategy_config(c) for c in rows],
+        "total": len(rows),
+    }
+
+
+@router.post("/signals/set_strategy")
+async def set_strategy(
+    req: SetStrategyRequest,
+    tenant_id: str | None = Query(None),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """手动切换：根据回测 run_id 写新 active config（关旧 + 开新）。"""
+    try:
+        run_uuid = uuid.UUID(req.run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"run_id 格式错误：{req.run_id}") from exc
+
+    sel = StrategySelector(session)
+    try:
+        cfg = await sel.set_from_run(
+            run_id=run_uuid,
+            tenant_id=tenant_id,
+            selected_by=req.selected_by or "frontend",
+            note=req.note,
+            selection_mode="manual",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await session.commit()
+    return {
+        "ok": True,
+        "config": serialize_strategy_config(cfg),
+    }
+
+
+@router.post("/signals/auto_pick_best")
+async def auto_pick_best(
+    req: AutoPickRequest,
+    tenant_id: str | None = Query(None),
+    session: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """P2-T13 自动从最近 N 天 completed run 中选 metric top 1，切换为 active。
+
+    - 如果没有任何 run → 返回 400（显式报错，禁止静默）
+    - 如果有 run 但都是 None metric → 选最早一条并 warn
+    """
+    sel = StrategySelector(session)
+    best_run_id = await sel.pick_best_run(
+        tenant_id=tenant_id, days=req.days, metric=req.metric
+    )
+    if not best_run_id:
+        raise HTTPException(
+            status_code=400,
+            detail=f"最近 {req.days} 天内无 completed run，无法自动选择 strategy",
+        )
+    try:
+        cfg = await sel.set_from_run(
+            run_id=best_run_id,
+            tenant_id=tenant_id,
+            selected_by=req.selected_by or "auto_picker",
+            note=f"auto: best {req.metric} over last {req.days}d",
+            selection_mode=f"auto_best_{req.metric}",
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    await session.commit()
+    return {
+        "ok": True,
+        "picked_run_id": str(best_run_id),
+        "config": serialize_strategy_config(cfg),
+    }
 
 
 
