@@ -85,6 +85,30 @@ class FinancialReportProvider:
 
         return _flatten_indicators(df, source="akshare.stock_financial_analysis_indicator_em")
 
+    async def get_balance_sheet(self, symbol: str) -> pd.DataFrame:
+        """资产负债表（按报告期）。失败 → 透传。"""
+        logger.info("正在拉取资产负债表: %s", symbol)
+        rows = fetch_balance_sheet(symbol)
+        if not rows:
+            return pd.DataFrame()
+        return pd.DataFrame(rows)
+
+    async def get_cashflow_statement(self, symbol: str) -> pd.DataFrame:
+        """现金流量表（按报告期）。失败 → 透传。"""
+        logger.info("正在拉取现金流量表: %s", symbol)
+        rows = fetch_cashflow_statement(symbol)
+        if not rows:
+            return pd.DataFrame()
+        return pd.DataFrame(rows)
+
+    async def get_income_statement(self, symbol: str) -> pd.DataFrame:
+        """利润表（按报告期）。失败 → 透传。"""
+        logger.info("正在拉取利润表: %s", symbol)
+        rows = fetch_income_statement(symbol)
+        if not rows:
+            return pd.DataFrame()
+        return pd.DataFrame(rows)
+
 
 def _flatten_indicators(raw_df: pd.DataFrame, *, source: str) -> pd.DataFrame:
     """把 akshare 的宽表（行=日期，列=指标）压成长表（行=日期×指标）。
@@ -139,3 +163,67 @@ def normalize_indicator_payload(payload: Any) -> pd.DataFrame:
     if isinstance(payload, list):
         return _flatten_indicators(pd.DataFrame(payload), source="external")
     raise TypeError(f"unsupported payload type: {type(payload).__name__}")
+
+
+# ── 财务三表（balance_sheet / cashflow_statement / income_statement）──
+#
+# 数据源：akshare stock_balance_sheet_by_report_em / stock_cash_flow_sheet_by_report_em /
+#         stock_profit_sheet_by_report_em（东财数据中心，按报告期）
+#
+# 设计：
+# - 三个 fetch_* 为模块级函数（便于测试 patch）
+# - FinancialReportProvider 提供 3 个 async 包装方法
+# - 失败语义：下游 raise → 透传（不静默吞）
+
+
+def _ensure_akshare():
+    """运行时导入 akshare（延迟 import 让单测不依赖真实安装）。"""
+    try:
+        import akshare as ak
+    except ImportError as exc:
+        raise RuntimeError(
+            "akshare 未安装 — 财务三表接口需要 akshare 提供 stock_balance_sheet_by_report_em 等"
+        ) from exc
+    return ak
+
+
+def fetch_balance_sheet(symbol: str) -> list[dict[str, Any]]:
+    """拉取资产负债表（按报告期）。失败 → 透传。"""
+    ak = _ensure_akshare()
+    fn = getattr(ak, "stock_balance_sheet_by_report_em", None)
+    if fn is None:
+        raise NotImplementedError(
+            f"akshare 缺少 stock_balance_sheet_by_report_em 接口"
+        )
+    df = fn(stock=symbol)
+    if df is None or df.empty:
+        return []
+    return df.to_dict(orient="records")
+
+
+def fetch_cashflow_statement(symbol: str) -> list[dict[str, Any]]:
+    """拉取现金流量表（按报告期）。失败 → 透传。"""
+    ak = _ensure_akshare()
+    fn = getattr(ak, "stock_cash_flow_sheet_by_report_em", None)
+    if fn is None:
+        raise NotImplementedError(
+            f"akshare 缺少 stock_cash_flow_sheet_by_report_em 接口"
+        )
+    df = fn(stock=symbol)
+    if df is None or df.empty:
+        return []
+    return df.to_dict(orient="records")
+
+
+def fetch_income_statement(symbol: str) -> list[dict[str, Any]]:
+    """拉取利润表（按报告期）。失败 → 透传。"""
+    ak = _ensure_akshare()
+    fn = getattr(ak, "stock_profit_sheet_by_report_em", None)
+    if fn is None:
+        raise NotImplementedError(
+            f"akshare 缺少 stock_profit_sheet_by_report_em 接口"
+        )
+    df = fn(stock=symbol)
+    if df is None or df.empty:
+        return []
+    return df.to_dict(orient="records")

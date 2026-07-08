@@ -529,9 +529,9 @@ async def stock_financial(
         all_codes: set[str] = set()
         for p in sorted_periods:
             all_codes.update(pivot[p].keys())
-        # 固定指标顺序（按 _INDICATOR_MAP 顺序）
+        # 固定指标顺序（按 _INDICATOR_MAP 顺序）— 取 dict 中已定义的 key
         from data_pipeline.providers.financial_report_provider import _INDICATOR_MAP
-        code_order = [c for c, _ in _INDICATOR_MAP.items() if False]  # 简化
+        code_order = [c for c, _ in _INDICATOR_MAP.items() if c in all_codes]
         # 实际：把 indicator_code 排序
         sorted_codes = sorted(all_codes)
         rows_table: list[dict[str, Any]] = []
