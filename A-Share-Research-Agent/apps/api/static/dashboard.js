@@ -6120,6 +6120,107 @@ async function registerModel() {
 }
 
 // ════════════════════════════════════════════════════════════════
+// P0-T6/P0-T13 宏观环境 tab — PMI/CPI/M2/中美利差 + LLM 解读
+// ════════════════════════════════════════════════════════════════
+
+let _macroCache = null;
+
+async function loadMacro() {
+  const gridEl = document.getElementById("macro-indicator-grid");
+  const interpEl = document.getElementById("macro-interpretation");
+  const rawEl = document.getElementById("macro-snapshot-raw");
+
+  if (gridEl) gridEl.innerHTML = `<div class="muted" style="padding: 12px;">加载中…</div>`;
+  if (interpEl) interpEl.innerHTML = `<div class="muted" style="padding: 12px;">加载中…</div>`;
+  if (rawEl) rawEl.innerText = "加载中…";
+
+  try {
+    // 并行拉 snapshot + interpretation
+    const [snapRes, interpRes] = await Promise.all([
+      _fetchJSONSafe("/v1/macro/snapshot?include_regime=true"),
+      _fetchJSONSafe("/v1/macro/interpretation"),
+    ]);
+
+    // 1) 指标卡片
+    if (snapRes.ok && snapRes.data) {
+      _renderMacroIndicators(gridEl, snapRes.data);
+    } else if (gridEl) {
+      gridEl.innerHTML = `<div class="muted" style="padding: 12px; color:#fb7185;">加载失败：${(snapRes.error || "snapshot 接口异常")}</div>`;
+    }
+
+    // 2) LLM 解读
+    if (interpRes.ok && interpRes.data) {
+      _renderMacroInterpretation(interpEl, interpRes.data);
+    } else if (interpEl) {
+      interpEl.innerHTML = `<div class="muted" style="padding: 12px; color:#fb7185;">加载失败：${(interpRes.error || "interpretation 接口异常")}</div>`;
+    }
+
+    // 3) 原始 JSON 快照
+    if (snapRes.ok && rawEl) {
+      try {
+        rawEl.innerText = JSON.stringify(snapRes.data, null, 2);
+      } catch {
+        rawEl.innerText = String(snapRes.data);
+      }
+    } else if (rawEl) {
+      rawEl.innerText = "（加载失败）";
+    }
+
+    _macroCache = { snap: snapRes, interp: interpRes };
+  } catch (e) {
+    if (gridEl) gridEl.innerHTML = `<div class="muted" style="padding: 12px; color:#fb7185;">加载失败：${e.message || e}</div>`;
+  }
+}
+
+function _renderMacroIndicators(gridEl, snap) {
+  if (!gridEl) return;
+  // 兼容多种结构：{ indicators: [...] } 或 { items: [...] } 或直接 [{code, value, ...}]
+  const items = snap.indicators || snap.items || (Array.isArray(snap) ? snap : []);
+  if (!Array.isArray(items) || items.length === 0) {
+    gridEl.innerHTML = `<div class="muted" style="padding: 12px;">暂无宏观指标数据。请先在数据源页跑宏观 ETL。</div>`;
+    return;
+  }
+  const cards = items
+    .map((it) => {
+      const code = it.code || it.indicator_code || it.name || "—";
+      const name = it.name || it.indicator_name || it.code || "—";
+      const value = it.value != null ? it.value : it.latest_value;
+      const unit = it.unit || "";
+      const delta = it.delta_yoy != null ? it.delta_yoy : it.change;
+      const period = it.period || it.business_date || "";
+      const valueStr = value != null && value !== "" ? value : "—";
+      const deltaStr = delta != null ? `<span class="${delta >= 0 ? "up" : "down"}">${delta >= 0 ? "+" : ""}${delta}</span>` : "";
+      return `
+        <div class="macro-indicator-card">
+          <div class="macro-indicator-code">${code}</div>
+          <div class="macro-indicator-name">${name}</div>
+          <div class="macro-indicator-value">${valueStr} <span class="muted" style="font-size:11px;">${unit}</span></div>
+          <div class="muted" style="font-size:11px;">${deltaStr} ${period ? "· " + period : ""}</div>
+        </div>`;
+    })
+    .join("");
+  gridEl.innerHTML = cards;
+}
+
+function _renderMacroInterpretation(interpEl, interp) {
+  if (!interpEl) return;
+  const text = interp.interpretation || interp.text || interp.summary || "";
+  const regime = interp.regime || "";
+  const generatedAt = interp.generated_at || interp.timestamp || "";
+  const llmModel = interp.llm_model || interp.model || "";
+  if (!text) {
+    interpEl.innerHTML = `<div class="muted" style="padding: 12px;">暂无 LLM 解读${regime ? " · regime=" + regime : ""}</div>`;
+    return;
+  }
+  const meta = [
+    regime ? `<span class="macro-regime-tag">${regime}</span>` : "",
+    llmModel ? `<span class="muted" style="font-size:11px;">· ${llmModel}</span>` : "",
+    generatedAt ? `<span class="muted" style="font-size:11px;">· ${new Date(generatedAt).toLocaleString("zh-CN")}</span>` : "",
+  ].filter(Boolean).join(" ");
+  interpEl.innerHTML = `${meta}<div style="margin-top: 8px; line-height: 1.6;">${text.replace(/\n/g, "<br>")}</div>`;
+}
+
+// ════════════════════════════════════════════════════════════════
 // P2-T11/P2-T12/P2-T13 当前 strategy 切换（signals tab）
 // ════════════════════════════════════════════════════════════════
 
