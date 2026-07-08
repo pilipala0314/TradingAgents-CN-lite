@@ -185,7 +185,8 @@ function renderGlobalTables(quotes) {
   Object.entries(quotes).forEach(([code, q]) => {
     const m = q.market || "other";
     const bucket = buckets[m] || buckets.other;
-    bucket.push([code, q]);
+    // 必须 push 对象（不是 [code, q] 元组），下游 _renderMarketTable 用 row._code 取 code
+    bucket.push({ _code: code, ...q });
   });
   const emptyMessages = {
     cn: "Provider 未返回 A 股指数（akshare 暂停或网络问题）",
