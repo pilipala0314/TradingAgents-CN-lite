@@ -758,24 +758,20 @@
 
     <!-- Tab: 回测 -->
     <div class="tab-panel" data-tab="backtest">
-      <!-- 头图：回测配置 -->
+      <!-- 头图：回测配置（标题 + 操作按钮 — 显式分两行避免重叠） -->
       <section class="card backtest-hero">
-        <div class="signal-hero-head">
-          <div>
-            <div class="signal-eyebrow">BACKTEST ENGINE</div>
-            <h2 class="signal-h1">回测引擎 <span class="muted" style="font-size:14px;">配置 · 执行 · 归因</span></h2>
-            <p class="signal-sub">默认：沪深 300 / 近 1 年 / 周度调仓 / Top 20</p>
-          </div>
-          <div class="signal-hero-actions">
-            <button id="bt-reset" class="signal-btn-ghost">↺ 重置默认</button>
-            <button id="bt-run" class="signal-btn-primary">▶ 运行回测</button>
-            <button id="bt-4x30" class="signal-btn-primary" style="background: linear-gradient(135deg, #28a745 0%, #16a34a 100%);">📊 4×30 对比</button>
-            <button id="bt-history" class="signal-btn-ghost">📜 历史</button>
-          </div>
+        <div class="signal-eyebrow">BACKTEST ENGINE</div>
+        <h2 class="signal-h1">回测引擎 <span class="muted" style="font-size:14px;">配置 · 执行 · 归因</span></h2>
+        <p class="signal-sub">默认：沪深 300 / 近 1 年 / 周度调仓 / Top 20</p>
+        <div class="backtest-action-row">
+          <button id="bt-reset" class="signal-btn-ghost">↺ 重置默认</button>
+          <button id="bt-run" class="signal-btn-primary">▶ 运行回测</button>
+          <button id="bt-4x30" class="signal-btn-primary" style="background: linear-gradient(135deg, #28a745 0%, #16a34a 100%);">📊 4×30 对比</button>
+          <button id="bt-history" class="signal-btn-ghost">📜 历史</button>
         </div>
 
-        <!-- 配置区（核心） -->
-        <div class="signal-trace-toolbar" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); display:grid;">
+        <!-- 配置区：两个独立的 toolbar 行（标题独立、避免与上面按钮粘连） -->
+        <div class="backtest-config-row">
           <label class="muted">策略：
             <select id="bt-strategy"></select>
           </label>
@@ -800,24 +796,24 @@
             </select>
           </label>
           <label class="muted">持仓 N：
-            <input id="bt-topn" type="number" value="20" min="1" max="100" style="width: 70px;" />
+            <input id="bt-topn" type="number" value="20" min="1" max="100" class="input-fixed" style="width: 70px;" />
           </label>
         </div>
-        <div class="signal-trace-toolbar" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); display:grid;">
+        <div class="backtest-config-row">
           <label class="muted">起始日期：
-            <input id="bt-start" type="date" />
+            <input id="bt-start" type="date" class="input-fixed" style="width: 150px;" />
           </label>
           <label class="muted">结束日期：
-            <input id="bt-end" type="date" />
+            <input id="bt-end" type="date" class="input-fixed" style="width: 150px;" />
           </label>
           <label class="muted">初始资金 (元)：
-            <input id="bt-capital" type="number" value="1000000" min="10000" step="10000" style="width: 130px;" />
+            <input id="bt-capital" type="number" value="1000000" min="10000" step="10000" class="input-fixed" style="width: 150px;" />
           </label>
-          <label class="muted">
+          <label class="muted" style="white-space: nowrap;">
             <input id="bt-async" type="checkbox" /> 异步执行（不阻塞 UI）
           </label>
         </div>
-        <div id="bt-status" class="alert-bar" style="margin-top: 12px;"></div>
+        <div id="bt-status" class="alert-bar" style="margin-top: 14px;"></div>
       </section>
 
       <!-- ① 结果摘要：核心指标 + 净值曲线 -->

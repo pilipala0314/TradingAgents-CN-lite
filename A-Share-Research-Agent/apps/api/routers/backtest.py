@@ -161,12 +161,17 @@ def _build_config(payload: BacktestRunRequest) -> BacktestConfig:
 
 @router.post("/run")
 async def run_backtest(payload: BacktestRunRequest) -> dict[str, Any]:
-    """执行回测（同步阻塞；~秒级返回）。"""
+    """执行回测（异步非阻塞；~秒级返回）。
+
+    实现：用 `engine.run_async(config)`，内部用 `asyncio.to_thread(self.run, config)`
+    把同步 run() 放到独立线程，避免在主 event loop 里调 asyncio.run() 触发
+    "cannot be called from a running event loop" 错误。
+    """
     config = _build_config(payload)
     data_router = get_router()
     engine = BacktestEngine(router=data_router)
     try:
-        result = engine.run(config)
+        result = await engine.run_async(config)
     except Exception as exc:
         logger.exception("回测失败: %s", exc)
         raise HTTPException(

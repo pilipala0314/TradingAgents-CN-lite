@@ -894,6 +894,56 @@ canvas {
 }
 
 /* ── P2-T11/P2-T12: 当前 strategy 切换条 ────────────── */
+
+/* ── Backtest hero（避免按钮与配置区重叠） ────────────── */
+.backtest-hero {
+  position: relative;
+  z-index: 1;
+}
+.backtest-action-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 14px 0 4px 0;
+  padding: 10px 12px;
+  background: rgba(99, 102, 241, 0.05);
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  border-radius: 6px;
+}
+.backtest-config-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px 16px;
+  margin: 12px 0 0 0;
+  padding: 10px 12px;
+  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: 6px;
+  position: relative;
+  z-index: 2;
+}
+.backtest-config-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  white-space: nowrap;
+  min-width: 0;
+}
+.backtest-config-row label > select,
+.backtest-config-row label > input.input-fixed {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 200px;
+}
+.backtest-config-row label > input[type="checkbox"] {
+  flex: 0 0 auto;
+}
+@media (max-width: 768px) {
+  .backtest-action-row { flex-direction: column; align-items: stretch; }
+  .backtest-config-row { grid-template-columns: 1fr; }
+}
 .signal-strategy-strip {
   margin-top: 16px;
   padding: 14px 16px;
