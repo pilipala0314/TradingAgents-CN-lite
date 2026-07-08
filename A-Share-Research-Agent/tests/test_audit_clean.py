@@ -405,3 +405,163 @@ class TestP0RouterContract:
         assert fn is not None, "admin.scheduler_status 不存在"
         doc = (fn.__doc__ or "").strip()
         assert "running" in doc, "scheduler_status docstring 应说明 running 字段"
+
+
+# ── P2 阶段专项审计 ────────────────────────────
+
+
+P2_NEW_SERVICES = [
+    "services/strategy_selector.py",
+    "services/model_registry.py",
+]
+
+P2_NEW_ETLS = [
+    "data_pipeline/etl/capital_flow.py",
+    "data_pipeline/etl/financial_report_etl.py",
+    "data_pipeline/etl/news_sentiment_etl.py",
+]
+
+P2_NEW_PROVIDERS = [
+    "data_pipeline/providers/news_sentiment_provider.py",
+    "data_pipeline/providers/financial_report_provider.py",
+]
+
+P2_ALL_NEW_FILES = P2_NEW_SERVICES + P2_NEW_ETLS + P2_NEW_PROVIDERS
+
+
+class TestP2NoMock:
+    """P2 新代码不允许 Mock / 假数据占位。"""
+
+    def test_p2_no_mock_fake_stub_in_files(self):
+        offenders: list[str] = []
+        for rel in P2_ALL_NEW_FILES:
+            p = REPO_ROOT / rel
+            if not p.exists():
+                offenders.append(f"{rel} (不存在)")
+                continue
+            text = p.read_text(encoding="utf-8", errors="ignore")
+            for m in re.finditer(
+                r"#[^\n]*(?:\bmock\b|\bfake\b|\bstub\b)[^\n]*", text, re.IGNORECASE
+            ):
+                line_no = text[: m.start()].count("\n") + 1
+                snippet = m.group(0).lower()
+                if any(
+                    ex in snippet
+                    for ex in ("no mock", "无 mock", "无挡板", "防止 mock", "禁止 mock", "禁 mock", "而非 mock")
+                ):
+                    continue
+                offenders.append(f"{rel}:{line_no}: {m.group(0).strip()}")
+        assert offenders == [], "P2 新代码不允许出现 mock/fake/stub 注释:\n" + "\n".join(offenders)
+
+    def test_p2_no_hardcoded_return_for_fake_response(self):
+        """不允许出现 `return [{"some": "fake_dict"}]` 之类的硬编码响应（除非是 Pydantic 模型序列化）。"""
+        offenders: list[str] = []
+        # 匹配 `return [{...硬编码 dict...}]` 模式（行内）
+        pattern = re.compile(r"return\s+\[\s*\{[^{}]{0,200}\}\s*\]", re.DOTALL)
+        for rel in P2_ALL_NEW_FILES:
+            p = REPO_ROOT / rel
+            if not p.exists():
+                continue
+            text = p.read_text(encoding="utf-8", errors="ignore")
+            for m in pattern.finditer(text):
+                line_no = text[: m.start()].count("\n") + 1
+                offenders.append(f"{rel}:{line_no}: 疑似硬编码 return dict")
+        if offenders:
+            print("[P2-AUDIT] 疑似硬编码 return dict（请人工审查）:\n  " + "\n  ".join(offenders))
+
+    def test_p2_no_bare_pass(self):
+        offenders: list[str] = []
+        pattern = re.compile(r"except[^:\n]*:\s*(?:pass|continue)\b", re.MULTILINE)
+        for rel in P2_ALL_NEW_FILES:
+            p = REPO_ROOT / rel
+            if not p.exists():
+                continue
+            text = p.read_text(encoding="utf-8", errors="ignore")
+            for m in pattern.finditer(text):
+                line_no = text[: m.start()].count("\n") + 1
+                offenders.append(f"{rel}:{line_no}: {m.group(0).strip()}")
+        assert offenders == [], (
+            "P2 新代码不允许出现 except: pass / except: continue:\n"
+            + "\n".join(offenders)
+        )
+
+
+class TestP2ServicesContract:
+    """P2 services 必须有真实业务 import。"""
+
+    def test_strategy_selector_imports_models(self):
+        from services import strategy_selector
+
+        text = Path(strategy_selector.__file__).read_text(encoding="utf-8", errors="ignore")
+        # 至少 import models / sqlalchemy / services 中一个
+        assert "from models" in text, "strategy_selector 必须 import models"
+        assert "sqlalchemy" in text, "strategy_selector 必须用 sqlalchemy"
+
+    def test_model_registry_imports_models(self):
+        from services import model_registry
+
+        text = Path(model_registry.__file__).read_text(encoding="utf-8", errors="ignore")
+        assert "from models" in text, "model_registry 必须 import models"
+        assert "DimModel" in text, "model_registry 必须引用 DimModel"
+
+
+class TestP2DashboardEndpoints:
+    """P2 新增 dashboard 端点必须有响应契约。"""
+
+    def test_current_strategy_endpoint_documented(self):
+        from apps.api.routers import dashboard
+
+        fn = getattr(dashboard, "get_current_strategy", None)
+        assert fn is not None, "dashboard.get_current_strategy 不存在"
+        doc = (fn.__doc__ or "").strip()
+        assert "active" in doc, "get_current_strategy docstring 应说明 active 字段"
+
+    def test_set_strategy_endpoint_documented(self):
+        from apps.api.routers import dashboard
+
+        fn = getattr(dashboard, "set_strategy", None)
+        assert fn is not None, "dashboard.set_strategy 不存在"
+
+    def test_auto_pick_best_endpoint_documented(self):
+        from apps.api.routers import dashboard
+
+        fn = getattr(dashboard, "auto_pick_best", None)
+        assert fn is not None, "dashboard.auto_pick_best 不存在"
+
+    def test_model_registry_router_has_admin_endpoints(self):
+        from apps.api.routers import model_registry as model_registry_router
+
+        for name in (
+            "list_models",
+            "register_model",
+            "activate_model",
+            "update_model",
+            "delete_model",
+        ):
+            fn = getattr(model_registry_router, name, None)
+            assert fn is not None, f"model_registry.{name} 不存在"
+
+
+class TestP2ETLsUseRealDataSources:
+    """P2 ETL 必须调真实数据源接口。"""
+
+    def test_capital_flow_etl_uses_akshare(self):
+        from data_pipeline.etl import capital_flow
+        text = Path(capital_flow.__file__).read_text(encoding="utf-8", errors="ignore")
+        assert "akshare" in text or "stock_individual_fund_flow" in text or "_ak" in text, (
+            "capital_flow ETL 必须调真实 akshare 接口"
+        )
+
+    def test_financial_report_etl_uses_akshare(self):
+        from data_pipeline.etl import financial_report_etl
+        text = Path(financial_report_etl.__file__).read_text(encoding="utf-8", errors="ignore")
+        assert "akshare" in text or "stock_financial" in text or "_ak" in text, (
+            "financial_report_etl 必须调真实 akshare 接口"
+        )
+
+    def test_news_sentiment_etl_uses_akshare(self):
+        from data_pipeline.etl import news_sentiment_etl
+        text = Path(news_sentiment_etl.__file__).read_text(encoding="utf-8", errors="ignore")
+        assert "akshare" in text or "stock_news" in text or "_ak" in text, (
+            "news_sentiment_etl 必须调真实 akshare 接口"
+        )

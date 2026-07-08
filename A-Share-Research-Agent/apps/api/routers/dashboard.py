@@ -22,6 +22,7 @@ from data_pipeline.providers.facade import get_router
 from data_pipeline.providers.sw_industry_provider import SWIndustryProvider
 from services.decision_drilldown_service import fetch_stock_decisions
 from services.sector_heatmap_service import build_sector_heatmap
+from services.strategy_selector import StrategySelector, serialize_strategy_config
 
 logger = logging.getLogger(__name__)
 
@@ -253,9 +254,10 @@ async def stock_capital_flow(
     - summary: KPI 汇总（最新一日净流入、超大单、大单）
     """
     from datetime import datetime, timedelta
+
     from sqlalchemy import select
 
-    from core.enums import EntityType, FlowType, WindowType
+    from core.enums import EntityType, FlowType
     from models.dimensions import DimSecurity
     from models.facts import FactCapitalFlow
 
@@ -282,6 +284,7 @@ async def stock_capital_flow(
     if result["security_id"]:
         try:
             from uuid import UUID
+
             from sqlalchemy import and_
             cutoff = (datetime.utcnow() - timedelta(days=days)).date()
             q = (
@@ -364,7 +367,9 @@ async def stock_news(
     - aggregate: 分布统计 (positive/neutral/total/avg_score/label)
     """
     from datetime import datetime, timedelta
+
     from sqlalchemy import and_, select
+
     from models.dimensions import DimSecurity
     from models.facts import FactNewsItem
 
@@ -429,12 +434,11 @@ async def stock_news(
         result["news"] = news_list
 
         # 3) 聚合
-        from data_pipeline.providers.news_sentiment_provider import aggregate_sentiment
         result["aggregate"] = {
             "total_count": len(news_list),
-            "positive_count": sum(1 for l in labels if l == "positive"),
-            "negative_count": sum(1 for l in labels if l == "negative"),
-            "neutral_count": sum(1 for l in labels if l == "neutral"),
+            "positive_count": sum(1 for lab in labels if lab == "positive"),
+            "negative_count": sum(1 for lab in labels if lab == "negative"),
+            "neutral_count": sum(1 for lab in labels if lab == "neutral"),
             "avg_score": round(sum(scores) / len(scores), 4) if scores else 0.0,
             "label": (
                 "positive" if (sum(scores) / max(1, len(scores))) >= 0.2 else
@@ -465,6 +469,7 @@ async def stock_financial(
     - table: 透视表 (rows=指标, cols=报告期)
     """
     from sqlalchemy import select
+
     from models.dimensions import DimSecurity
     from models.facts import FactFinancialReport
 
@@ -529,11 +534,11 @@ async def stock_financial(
         all_codes: set[str] = set()
         for p in sorted_periods:
             all_codes.update(pivot[p].keys())
-        # 固定指标顺序（按 _INDICATOR_MAP 顺序）— 取 dict 中已定义的 key
+        # 指标顺序：按 _INDICATOR_MAP 顺序优先，未收录的 indicator 排到末尾
         from data_pipeline.providers.financial_report_provider import _INDICATOR_MAP
-        code_order = [c for c, _ in _INDICATOR_MAP.items() if c in all_codes]
-        # 实际：把 indicator_code 排序
-        sorted_codes = sorted(all_codes)
+        mapped_codes = [c for c, _ in _INDICATOR_MAP.items() if c in all_codes]
+        unmapped_codes = sorted(all_codes - set(mapped_codes))
+        sorted_codes = mapped_codes + unmapped_codes
         rows_table: list[dict[str, Any]] = []
         for code_ in sorted_codes:
             row: dict[str, Any] = {"indicator": code_}
@@ -558,10 +563,8 @@ async def stock_financial(
 
 
 
+#
 # ── P2-T11/P2-T13 回测 → 线上 signal strategy 衔接 ─────────────────────────────
-
-
-from services.strategy_selector import StrategySelector, serialize_strategy_config
 
 
 class SetStrategyRequest(BaseModel):
@@ -581,7 +584,11 @@ async def get_current_strategy(
     tenant_id: str | None = Query(None),
     session: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """返回当前 tenant 激活的 strategy 配置（手动切换 / 自动最优）。"""
+    """返回当前 tenant 激活的 strategy 配置（手动切换 / 自动最优）。
+
+    Returns:
+        { "active": bool, "config": dict | None }
+    """
     sel = StrategySelector(session)
     cfg = await sel.get_current(tenant_id=tenant_id)
     if not cfg:
