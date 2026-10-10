@@ -1,0 +1,236 @@
+{
+  "_说明": "理想指标包示例 — 人工评审用。数据为 2026-09-30 真实拉取，板块维度接口当前不可达故标 failed（正是 data_quality 机制的设计场景）。结构对应 foundation.schemas.indicator_pack.IndicatorPack v1.0",
+  "meta": {
+    "schema_version": "1.0",
+    "generated_at": "2026-10-09T10:30:00+08:00",
+    "trade_date": "2026-09-30",
+    "scope": "sector",
+    "symbols": [],
+    "sector": "半导体",
+    "sector_caliber": "eastmoney",
+    "produced_by": "indicators",
+    "generation_round": 2
+  },
+
+  "data_quality": [
+    {
+      "dimension": "market_index",
+      "status": "ok",
+      "as_of": "2026-09-30",
+      "note": "上证/沪深300 日线正常；深成/创业板当日无返回（sina 单源）",
+      "evidence": [
+        {"source": "sina", "method": "get_index_daily_bars", "status": "ok", "as_of": "2026-09-30", "fetched_at": "2026-10-09T10:12:00+08:00", "latency_ms": 180}
+      ]
+    },
+    {
+      "dimension": "market_fund_flow",
+      "status": "ok",
+      "as_of": "2026-09-30",
+      "note": "全市场主力资金（akshare/tushare 双源同源，实为同一上游）",
+      "evidence": [
+        {"source": "akshare", "method": "get_market_fund_flow", "status": "ok", "fetched_at": "2026-10-09T10:12:03+08:00", "latency_ms": 1420},
+        {"source": "tushare", "method": "get_market_fund_flow", "status": "ok", "fetched_at": "2026-10-09T10:12:05+08:00", "latency_ms": 980}
+      ]
+    },
+    {
+      "dimension": "northbound",
+      "status": "ok",
+      "as_of": "2026-09-30",
+      "note": "北向当日交易状态=3（数据未更新），净流入为 0.0 — 属「接口有数但业务无值」，非缺失",
+      "evidence": [
+        {"source": "akshare", "method": "get_northbound_flow", "status": "ok", "fetched_at": "2026-10-09T10:12:07+08:00", "latency_ms": 860}
+      ]
+    },
+    {
+      "dimension": "limit_ecology",
+      "status": "ok",
+      "as_of": "2026-09-30",
+      "note": "涨停 52 / 跌停 9 / 炸板 12（全市场池，需按成分股过滤出板块口径）",
+      "evidence": [
+        {"source": "akshare", "method": "get_limit_up_pool", "status": "ok", "fetched_at": "2026-10-09T10:12:10+08:00"},
+        {"source": "akshare", "method": "get_limit_down_pool", "status": "ok", "fetched_at": "2026-10-09T10:12:12+08:00"},
+        {"source": "akshare", "method": "get_bomb_board_pool", "status": "ok", "fetched_at": "2026-10-09T10:12:14+08:00"}
+      ]
+    },
+    {
+      "dimension": "dragon_tiger",
+      "status": "empty",
+      "as_of": "2026-09-30",
+      "note": "该交易日龙虎榜无记录（akshare 空数据 bug 已按空表处理，非失败）",
+      "evidence": [
+        {"source": "akshare", "method": "get_dragon_tiger_list", "status": "empty", "fetched_at": "2026-10-09T10:12:16+08:00"}
+      ]
+    },
+    {
+      "dimension": "sector_price",
+      "status": "failed",
+      "as_of": null,
+      "note": "板块涨跌幅/板块 K 线：东财与通达信双源均返回空，akshare 板块接口（stock_board_industry_hist_em）网络失败 — 待二次刷新或数据源修复",
+      "evidence": [
+        {"source": "eastmoney", "method": "get_industry_ranking", "status": "failed", "error": "HTTP 502 / 空返回", "fetched_at": "2026-10-09T10:12:20+08:00"},
+        {"source": "a_stock_data", "method": "get_industry_ranking", "status": "empty", "fetched_at": "2026-10-09T10:12:22+08:00"},
+        {"source": "akshare", "method": "get_sector_recent_bars", "status": "failed", "error": "stock_board_industry_hist_em 连接中断", "fetched_at": "2026-10-09T10:12:25+08:00"}
+      ]
+    },
+    {
+      "dimension": "sector_capital",
+      "status": "failed",
+      "as_of": null,
+      "note": "板块主力净流入：akshare stock_sector_fund_flow_hist 网络失败；东财直连板块资金流端点尚未接入注册表",
+      "evidence": [
+        {"source": "akshare", "method": "get_sector_fund_flow", "status": "failed", "error": "stock_sector_fund_flow_hist 连接中断", "fetched_at": "2026-10-09T10:12:28+08:00"}
+      ]
+    },
+    {
+      "dimension": "sector_events",
+      "status": "empty",
+      "as_of": "2026-09-30",
+      "note": "板块事件信号：akshare 缺少 stock_board_industry_news_em，按空列表处理",
+      "evidence": [
+        {"source": "akshare", "method": "get_sector_event_signals", "status": "empty", "fetched_at": "2026-10-09T10:12:31+08:00"}
+      ]
+    }
+  ],
+
+  "factors": [
+    {
+      "id": "market_index_sh",
+      "dimension": "market",
+      "name": "上证指数收盘",
+      "value": 3842.195,
+      "unit": "点",
+      "caliber": "sina",
+      "as_of": "2026-09-30",
+      "confidence": 0.6,
+      "weight": 1.0,
+      "source_agreement": "single",
+      "evidence": [{"source": "sina", "method": "get_index_daily_bars", "status": "ok"}],
+      "conflicts": []
+    },
+    {
+      "id": "market_index_hs300",
+      "dimension": "market",
+      "name": "沪深300收盘",
+      "value": 4357.616,
+      "unit": "点",
+      "caliber": "sina",
+      "as_of": "2026-09-30",
+      "confidence": 0.6,
+      "weight": 1.0,
+      "source_agreement": "single",
+      "evidence": [{"source": "sina", "method": "get_index_daily_bars", "status": "ok"}],
+      "conflicts": []
+    },
+    {
+      "id": "market_limit_up_count",
+      "dimension": "sentiment",
+      "name": "全市场涨停家数",
+      "value": 52,
+      "unit": "家",
+      "caliber": "akshare",
+      "as_of": "2026-09-30",
+      "confidence": 0.6,
+      "weight": 1.0,
+      "source_agreement": "single",
+      "evidence": [{"source": "akshare", "method": "get_limit_up_pool", "status": "ok"}],
+      "conflicts": []
+    },
+    {
+      "id": "market_limit_down_count",
+      "dimension": "sentiment",
+      "name": "全市场跌停家数",
+      "value": 9,
+      "unit": "家",
+      "caliber": "akshare",
+      "as_of": "2026-09-30",
+      "confidence": 0.6,
+      "weight": 1.0,
+      "source_agreement": "single",
+      "evidence": [{"source": "akshare", "method": "get_limit_down_pool", "status": "ok"}],
+      "conflicts": []
+    },
+    {
+      "id": "market_bomb_board_count",
+      "dimension": "sentiment",
+      "name": "全市场炸板家数",
+      "value": 12,
+      "unit": "家",
+      "caliber": "akshare",
+      "as_of": "2026-09-30",
+      "confidence": 0.6,
+      "weight": 1.0,
+      "source_agreement": "single",
+      "evidence": [{"source": "akshare", "method": "get_bomb_board_pool", "status": "ok"}],
+      "conflicts": []
+    },
+    {
+      "id": "market_sentiment_ratio",
+      "dimension": "sentiment",
+      "name": "涨停/炸板比（情绪分歧度）",
+      "value": 4.33,
+      "unit": "倍",
+      "caliber": "derived",
+      "as_of": "2026-09-30",
+      "confidence": 0.6,
+      "weight": 1.0,
+      "source_agreement": "single",
+      "evidence": [{"source": "derived", "method": "limit_up/bomb_board", "status": "ok"}],
+      "conflicts": [],
+      "_note": "派生因子：52/12 = 4.33，比值越高说明封板越坚决"
+    },
+    {
+      "id": "sector_pct_change",
+      "dimension": "price",
+      "name": "半导体板块涨跌幅",
+      "value": null,
+      "unit": "%",
+      "caliber": "eastmoney",
+      "as_of": null,
+      "confidence": 0.0,
+      "weight": 1.0,
+      "source_agreement": "single",
+      "evidence": [
+        {"source": "eastmoney", "method": "get_industry_ranking", "status": "failed"},
+        {"source": "a_stock_data", "method": "get_industry_ranking", "status": "empty"}
+      ],
+      "conflicts": [],
+      "_note": "数据不可用 — 智能体必须声明，禁止推断"
+    },
+    {
+      "id": "sector_main_net_inflow",
+      "dimension": "capital",
+      "name": "半导体板块主力净流入",
+      "value": null,
+      "unit": "亿元",
+      "caliber": "akshare",
+      "as_of": null,
+      "confidence": 0.0,
+      "weight": 1.0,
+      "source_agreement": "single",
+      "evidence": [{"source": "akshare", "method": "get_sector_fund_flow", "status": "failed"}],
+      "conflicts": [],
+      "_note": "数据不可用"
+    }
+  ],
+
+  "market": {
+    "indices": {
+      "上证指数": {"close": 3842.195, "open": 3839.253, "high": 3851.217, "low": 3833.086, "volume": 41456024700},
+      "沪深300": {"close": 4357.616, "open": 4356.796, "high": 4368.614, "low": 4341.879, "volume": 16294962600},
+      "深证成指": null,
+      "创业板指": null
+    },
+    "limit_stats": {"limit_up": 52, "limit_down": 9, "bomb_board": 12},
+    "northbound": {
+      "沪股通": {"净流入": 0.0, "交易状态": 3, "上涨": 960, "下跌": 653},
+      "深股通": {"净流入": 0.0, "交易状态": 3, "上涨": 1148, "下跌": 706},
+      "_note": "交易状态=3 表示当日数据未更新，净流入 0.0 不代表真实为零"
+    }
+  },
+
+  "sectors": [],
+
+  "events": [],
+
+  "stock": {}
+}

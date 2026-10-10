@@ -1,0 +1,27 @@
+{
+  "sector_rank_em": {
+    "status": "failed",
+    "error": "DataFetchError: 数据路由全部失败: method=get_industry_ranking attempted=['eastmoney'] last_error=[retry] 重试 3 次后仍失败（attempts=3） | 根因: ProviderError: eastmoney get_industry_ranking 失败: "
+  },
+  "sector_rank_tdx": {
+    "status": "ok",
+    "shape": "list[0]",
+    "data": []
+  },
+  "sector_fund_flow": {
+    "status": "failed",
+    "error": "DataFetchError: 数据路由全部失败: method=get_sector_fund_flow attempted=['akshare'] last_error=[retry] 重试 3 次后仍失败（attempts=3） | 根因: ProviderError: akshare stock_sector_fund_flow_hist 调"
+  },
+  "sector_bars": {
+    "status": "failed",
+    "error": "DataFetchError: 数据路由全部失败: method=get_sector_recent_bars attempted=['akshare'] last_error=[retry] 重试 3 次后仍失败（attempts=3） | 根因: ProviderError: akshare stock_board_industry_hist_e"
+  },
+  "sector_components": {
+    "status": "failed",
+    "error": "DataFetchError: 数据路由全部失败: method=get_industry_board_components attempted=['akshare'] last_error=[circuit] 熔断器已 OPEN，直接拒绝（attempts=0）"
+  },
+  "sector_leaders": {
+    "status": "failed",
+    "error": "DataFetchError: 数据路由全部失败: method=get_sector_leaders attempted=['akshare'] last_error=[circuit] 熔断器已 OPEN，直接拒绝（attempts=0）"
+  }
+}

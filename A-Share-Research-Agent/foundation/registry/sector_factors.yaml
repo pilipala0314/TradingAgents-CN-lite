@@ -1,0 +1,449 @@
+# 板块报告因子注册表 — 设计时产物（AI 辅助编写，人审后锁定）
+#
+# 用途：T-1 单板块解读的「指标 → 数据需求」声明式映射。
+# 运行时由 foundation.registry.loader 加载校验后，纯代码查表调 datasource.route()，
+# AI 不参与取数决策（见设计文档 §2.5 / 本次架构决策）。
+#
+# 约定：
+#   - args / field / match 中的 {var} 由调用方注入（如 {sector} → "半导体"）
+#   - caliber 只标注不合并：不同口径作为独立因子并列，分歧由 source_agreement 体现
+#   - fusion.strategy=single 表示该因子当前只有单源（诚实标注，不假装多源）
+#   - note 含「待校准」= 取值路径未实测确认，上线前需校准
+
+version: "1.0"
+name: sector_report
+description: T-1 单板块解读报告的因子清单（资金/技术/情绪/事件/大盘背景）
+trade_timezone: Asia/Shanghai
+
+factors:
+
+  # ════════════════════════════════════════════════════════════════
+  # 技术面（price）— 收盘后即可
+  # ════════════════════════════════════════════════════════════════
+
+- id: sector_pct_change
+  dimension: price
+  name: 板块涨跌幅
+  unit: "%"
+  description: 板块当日涨跌幅（东财行业口径为主，含新浪口径交叉验证）
+  scope: sector
+  priority: 0
+  availability:
+    profile: after_close
+    available_from: "15:30"
+    second_round: false
+  fusion:
+    strategy: median
+    conflict_threshold: 0.02
+  sources:
+  - provider: eastmoney
+    method: get_industry_ranking
+    caliber: eastmoney
+    args: {limit: 90}
+    match: {board_name: "{sector}"}
+    field: change_pct
+    priority: 0
+    extract_kind: value
+  - provider: a_stock_data
+    method: get_industry_ranking
+    caliber: eastmoney
+    args: {limit: 90}
+    match: {board_name: "{sector}"}
+    field: change_pct
+    priority: 1
+    note: 经 a_stock_data 通道的东财 push2 行业口径（与 eastmoney 源同上游，非独立源）
+
+    extract_kind: value
+  - provider: sina
+    method: get_industry_ranking
+    caliber: sina
+    args: {limit: 90}
+    match: {board_name: "{sector}"}
+    field: change_pct
+    priority: 2
+    note: 新浪行业分类口径，与东财行业分类未必一一对应
+
+    extract_kind: value
+- id: sector_recent_bars
+  dimension: price
+  name: 板块近期 K 线
+  unit: ""
+  description: 板块近 N 日 K 线，供指标层计算量比/均线位置/MACD
+  scope: sector
+  priority: 2
+  availability:
+    profile: after_close
+    available_from: "15:30"
+  fusion:
+    strategy: first
+  sources:
+  - provider: akshare
+    method: get_sector_recent_bars
+    caliber: akshare
+    args: {sector_name: "{sector}"}
+    note: 返回整表供指标层计算，不取单字段
+
+  # ════════════════════════════════════════════════════════════════
+  # 资金面（capital）— 傍晚披露，部分需二次刷新
+  # ════════════════════════════════════════════════════════════════
+
+    extract_kind: whole
+- id: sector_main_net_inflow
+  dimension: capital
+  name: 板块主力净流入
+  unit: 亿元
+  description: 板块当日主力资金净流入（正=净流入）
+  scope: sector
+  priority: 0
+  availability:
+    profile: evening
+    available_from: "18:00"
+    second_round: true
+    second_round_at: "20:30"
+    note: 东财 16:00-18:00 陆续更新，盘后首轮可能拿不全
+  fusion:
+    strategy: single
+  sources:
+  - provider: akshare
+    method: get_sector_fund_flow
+    caliber: akshare
+    args: {sector_name: "{sector}"}
+    note: THS 兜底路径无主力净流入（该字段为 None），仅东财路径提供数值
+    extract_kind: value
+    field: main_net_inflow
+  note: 当前仅 akshare 单源；接入东财直连后升级为多源交叉验证
+
+- id: sector_member_fund_flow
+  dimension: capital
+  name: 成分股资金流加总
+  unit: 亿元
+  description: 板块成分股个股主力净流入求和，交叉验证板块口径资金
+  scope: sector
+  priority: 1
+  requires_components: true
+  availability:
+    profile: evening
+    available_from: "18:00"
+    second_round: true
+    second_round_at: "20:30"
+  fusion:
+    strategy: mean
+    conflict_threshold: 0.10
+  sources:
+  - provider: eastmoney
+    method: get_individual_fund_flow
+    caliber: eastmoney
+    args: {symbol: "{component}"}
+    match: {date: '{trade_date}'}
+    field: main_net_inflow
+    unit_scale: 1.0e-8
+    priority: 0
+    note: 逐成分股调用取当日；单位 元→亿元（字段/日期列按 provider 规范化输出对齐）
+    extract_kind: sum
+  - provider: akshare
+    method: get_individual_fund_flow
+    caliber: akshare
+    args: {symbol: "{component}"}
+    match: {日期: '{trade_date}'}
+    field: 主力净流入-净额
+    unit_scale: 1.0e-8
+    priority: 1
+
+    extract_kind: sum
+- id: northbound_flow
+  dimension: capital
+  name: 北向资金净流入
+  unit: 亿元
+  description: 北向资金当日净流入（沪股通+深股通），大盘情绪的外资信号
+  scope: market
+  priority: 1
+  availability:
+    profile: exchange
+    available_from: "17:00"
+    second_round: true
+    second_round_at: "20:30"
+    note: 港交所披露，盘后首轮常拿不到
+  fusion:
+    strategy: median
+    conflict_threshold: 0.05
+  sources:
+  - provider: akshare
+    method: get_northbound_flow
+    caliber: akshare
+    args: {}
+    note: ''
+    extract_kind: value
+    field: 资金净流入
+    match:
+      交易日: '{trade_date}'
+  - provider: tushare
+    method: get_northbound_flow
+    caliber: tushare
+    args: {}
+    note: ；需 TUSHARE_TOKEN
+
+  # ════════════════════════════════════════════════════════════════
+  # 情绪面（sentiment）— 收盘后即可
+  # ════════════════════════════════════════════════════════════════
+
+    extract_kind: value
+    field: 资金净流入
+    match:
+      交易日: '{trade_date}'
+- id: sector_limit_up_count
+  dimension: sentiment
+  name: 板块涨停家数
+  unit: 家
+  description: 板块成分股中当日涨停的数量（情绪热度核心指标）
+  scope: sector
+  priority: 0
+  requires_components: true
+  availability:
+    profile: after_close
+    available_from: "15:30"
+  fusion:
+    strategy: single
+  sources:
+  - provider: akshare
+    method: get_limit_up_pool
+    caliber: akshare
+    args:
+      date: '{trade_date}'
+    note: ''
+
+    extract_kind: count
+    match:
+      代码: '{component}'
+- id: sector_limit_down_count
+  dimension: sentiment
+  name: 板块跌停家数
+  unit: 家
+  description: 板块成分股中当日跌停的数量
+  scope: sector
+  priority: 1
+  requires_components: true
+  availability:
+    profile: after_close
+    available_from: "15:30"
+  fusion:
+    strategy: single
+  sources:
+  - provider: akshare
+    method: get_limit_down_pool
+    caliber: akshare
+    args:
+      date: '{trade_date}'
+    note: ''
+
+    extract_kind: count
+    match:
+      代码: '{component}'
+- id: sector_bomb_board_count
+  dimension: sentiment
+  name: 板块炸板家数
+  unit: 家
+  description: 板块成分股中涨停后开板的数量（情绪分歧度）
+  scope: sector
+  priority: 2
+  requires_components: true
+  availability:
+    profile: after_close
+    available_from: "15:30"
+  fusion:
+    strategy: single
+  sources:
+  - provider: akshare
+    method: get_bomb_board_pool
+    caliber: akshare
+    args:
+      date: '{trade_date}'
+    note: ''
+
+    extract_kind: count
+    match:
+      代码: '{component}'
+- id: sector_leaders
+  dimension: sentiment
+  name: 板块领涨股
+  unit: ""
+  description: 板块内涨幅居前的个股及其涨幅
+  scope: sector
+  priority: 1
+  availability:
+    profile: after_close
+    available_from: "15:30"
+  fusion:
+    strategy: first
+  sources:
+  - provider: akshare
+    method: get_sector_leaders
+    caliber: akshare
+    args: {sector_name: "{sector}"}
+    note: ''
+
+  # ════════════════════════════════════════════════════════════════
+  # 事件面（event）— 部分需二次刷新
+  # ════════════════════════════════════════════════════════════════
+
+    extract_kind: whole
+- id: sector_event_signals
+  dimension: event
+  name: 板块事件信号
+  unit: ""
+  description: 板块相关的政策/产业/公司事件信号
+  scope: sector
+  priority: 0
+  availability:
+    profile: after_close
+    available_from: "15:30"
+  fusion:
+    strategy: first
+  sources:
+  - provider: akshare
+    method: get_sector_event_signals
+    caliber: akshare
+    args: {sector_name: "{sector}"}
+    note: ''
+
+    extract_kind: whole
+- id: sector_news
+  dimension: event
+  name: 板块相关新闻
+  unit: ""
+  description: 板块成分股相关财经新闻流，供事件解读与情绪打标
+  scope: sector
+  priority: 1
+  requires_components: true
+  availability:
+    profile: evening
+    available_from: "18:00"
+    second_round: true
+    second_round_at: "21:00"
+    note: 晚间公告 18:00-22:00 陆续披露，T 日盘后拉取多数 UNAVAILABLE_YET
+  fusion:
+    strategy: union_dedup
+  sources:
+  - provider: news
+    method: get_stock_news
+    caliber: unknown
+    args: {symbol: "{component}"}
+    priority: 0
+    extract_kind: whole
+  - provider: akshare
+    method: get_stock_news
+    caliber: akshare
+    args: {symbol: "{component}"}
+    priority: 1
+    extract_kind: whole
+  - provider: a_stock_data
+    method: get_stock_news
+    caliber: eastmoney
+    args: {code: "{component}"}
+    priority: 2
+
+    extract_kind: whole
+- id: sector_dragon_tiger
+  dimension: event
+  name: 板块龙虎榜
+  unit: ""
+  description: 板块成分股中上榜龙虎榜的记录与席位（资金意图信号）
+  scope: sector
+  priority: 2
+  requires_components: true
+  availability:
+    profile: exchange
+    available_from: "17:00"
+    second_round: true
+    second_round_at: "20:30"
+    note: 交易所 17:00-19:00 披露，盘后首轮大概率 UNAVAILABLE_YET
+  fusion:
+    strategy: union_dedup
+  sources:
+  - provider: akshare
+    method: get_dragon_tiger_list
+    caliber: akshare
+    args:
+      date: '{trade_date}'
+    match: {代码: '{component}'}
+    note: ''
+
+  # ════════════════════════════════════════════════════════════════
+  # 大盘背景（market）— 板块解读的上下文，必读
+  # ════════════════════════════════════════════════════════════════
+
+    extract_kind: whole
+- id: market_index_pct
+  dimension: market
+  name: 主要指数涨跌
+  unit: "%"
+  description: 上证/深成/创业板/沪深300 涨跌幅，板块解读的大盘锚
+  scope: market
+  priority: 0
+  availability:
+    profile: after_close
+    available_from: "15:30"
+  fusion:
+    strategy: first
+  sources:
+  - provider: sina
+    method: get_index_daily_bars
+    caliber: sina
+    args: {symbol: "{index_code}", start_date: "{trade_date}", end_date: "{trade_date}"}
+    note: 逐指数调用
+
+    extract_kind: whole
+- id: market_breadth
+  dimension: market
+  name: 市场涨跌家数
+  unit: 家
+  description: 全市场上涨/下跌家数（市场广度）
+  scope: market
+  priority: 0
+  availability:
+    profile: after_close
+    available_from: "15:30"
+  fusion:
+    strategy: single
+  sources:
+  - provider: akshare
+    method: get_stock_list
+    caliber: akshare
+    args: {}
+    note: 待校准 — akshare stock_zh_a_spot_em（全市场行情）持续网络中断，字段取值路径未验证
+
+    extract_kind: whole
+- id: market_fund_flow
+  dimension: market
+  name: 大盘主力净流入
+  unit: 亿元
+  description: 全市场当日主力资金净流入
+  scope: market
+  priority: 1
+  availability:
+    profile: evening
+    available_from: "18:00"
+    second_round: true
+    second_round_at: "20:30"
+  fusion:
+    strategy: median
+    conflict_threshold: 0.08
+  sources:
+  - provider: akshare
+    method: get_market_fund_flow
+    caliber: akshare
+    args: {}
+    note: 单位 元→亿元
+    extract_kind: value
+    field: 主力净流入-净额
+    unit_scale: 1.0e-8
+    match:
+      日期: '{trade_date}'
+  - provider: tushare
+    method: get_market_fund_flow
+    caliber: tushare
+    args: {}
+    note: ；需 TUSHARE_TOKEN
+    extract_kind: value
+    field: 主力净流入-净额
+    match:
+      日期: '{trade_date}'

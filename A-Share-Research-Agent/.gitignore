@@ -27,6 +27,15 @@ coverage.xml
 .tox/
 .cache
 
+# 持久化文件缓存（DataRouter TieredCache L2）
+.file_cache/
+
+# 调用日志（datasource.call_logger 默认输出目录）
+.call_logs/
+
+# 报告产物归档（设计文档 §2.3：目录即数据库，不入库）
+reports/
+
 # IDE / editor
 .idea/
 .vscode/
@@ -36,8 +45,10 @@ coverage.xml
 *.log
 logs/
 
+# Qoder
+.qoder/
+.qoder-build/
+
 # Local secrets / runtime data — 绝不入库
 .env
 *.local
-data/raw/
-data/cache/

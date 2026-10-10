@@ -1,9 +1,0 @@
-{
-  "status": "ok",
-  "provider": "openai",
-  "model": "deepseek-chat",
-  "base_url": "https://api.deepseek.com/v1",
-  "elapsed_sec": 4.611,
-  "prompt": "用一句话介绍你自己。限制在 20 字以内。",
-  "response": "简练助手，高效解答，精准回应。"
-}
