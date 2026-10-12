@@ -1,7 +1,10 @@
 """akshare provider 纯函数单测（模块级 import akshare 失败时不崩溃，ak=None）。"""
+import asyncio
+
 import pandas as pd
 import pytest
 
+from datasource.errors import ProviderError
 from datasource.providers.akshare import (
     AkshareProvider,
     _extract_market_prefixed_symbol,
@@ -103,3 +106,57 @@ class TestAkshareEmptyDataBug:
 
         with pytest.raises(ProviderError):
             asyncio.run(main2())
+
+
+@pytest.mark.unit
+class TestNorthboundFlowFilter:
+    """get_northbound_flow 只保留北向两通道（沪股通/深股通），南向剔除。"""
+
+    @staticmethod
+    def _summary_df() -> pd.DataFrame:
+        return pd.DataFrame(
+            {
+                "交易日": ["2026-10-12"] * 4,
+                "类型": ["沪港通", "沪港通", "深港通", "深港通"],
+                "板块": ["沪股通", "港股通(沪)", "深股通", "港股通(深)"],
+                "资金方向": ["北向", "南向", "北向", "南向"],
+                "资金净流入": [1.5, 420.0, 2.5, 12.9],
+            }
+        )
+
+    def test_keeps_northbound_only(self, monkeypatch):
+        p = AkshareProvider()
+
+        async def fake_retry(method, *a, **k):
+            return TestNorthboundFlowFilter._summary_df()
+
+        monkeypatch.setattr(p, "_run_with_retry", fake_retry)
+        out = asyncio.run(p.get_northbound_flow())
+        assert len(out) == 2
+        assert (out["资金方向"] == "北向").all()
+        assert set(out["板块"]) == {"沪股通", "深股通"}
+        # 注册表按 sum 提取：沪+深，南向 420/12.9 不得混入
+        assert out["资金净流入"].sum() == pytest.approx(4.0)
+
+    def test_no_northbound_rows_raises(self, monkeypatch):
+        p = AkshareProvider()
+
+        async def fake_retry(method, *a, **k):
+            return pd.DataFrame(
+                {"板块": ["港股通(沪)"], "资金方向": ["南向"], "资金净流入": [420.0]}
+            )
+
+        monkeypatch.setattr(p, "_run_with_retry", fake_retry)
+        with pytest.raises(ProviderError):
+            asyncio.run(p.get_northbound_flow())
+
+    def test_missing_direction_column_kept_as_is(self, monkeypatch):
+        """上游列结构变化时不再过滤（宁可多给行也不静默丢数据），由 sum 提取兜底。"""
+        p = AkshareProvider()
+
+        async def fake_retry(method, *a, **k):
+            return pd.DataFrame({"板块": ["沪股通"], "资金净流入": [1.5]})
+
+        monkeypatch.setattr(p, "_run_with_retry", fake_retry)
+        out = asyncio.run(p.get_northbound_flow())
+        assert len(out) == 1

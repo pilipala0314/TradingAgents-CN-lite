@@ -166,7 +166,7 @@ class EastMoneyProvider:
                     "ut": "b2884a393a59ad64002292a3e90d46a5",
                 },
             )
-            klines = data.get("data", {}).get("klines", [])
+            klines = (data.get("data") or {}).get("klines", [])
             if not klines:
                 return pd.DataFrame()
             rows = []
@@ -189,24 +189,35 @@ class EastMoneyProvider:
             ) from exc
 
     async def get_industry_ranking(self, limit: int = 50, **kwargs: Any) -> list[dict]:
-        """获取行业板块涨跌排名。"""
+        """获取行业板块涨跌排名（自动翻页；EM clist 单页 pz 上限 100，行业板块共 ~496 个）。"""
         try:
-            data = await _em_get(
-                f"{_PUSH2_BASE}/clist/get",
-                {
-                    "pn": "1",
-                    "pz": str(limit),
-                    "po": "1",
-                    "np": "1",
-                    "fltt": "2",
-                    "invt": "2",
-                    "fid": "f3",
-                    "fs": "m:90+t:2",  # 行业板块
-                    "fields": "f2,f3,f4,f8,f12,f14,f104,f105,f128,f136,f140",
-                    "ut": "b2884a393a59ad64002292a3e90d46a5",
-                },
-            )
-            items = data.get("data", {}).get("diff", [])
+            pz = min(limit, 100)
+            max_pages = (limit + pz - 1) // pz + 1
+            items: list[dict] = []
+            total: int | None = None
+            for pn in range(1, max_pages + 1):
+                data = await _em_get(
+                    f"{_PUSH2_BASE}/clist/get",
+                    {
+                        "pn": str(pn),
+                        "pz": str(pz),
+                        "po": "1",
+                        "np": "1",
+                        "fltt": "2",
+                        "invt": "2",
+                        "fid": "f3",
+                        "fs": "m:90+t:2",  # 行业板块
+                        "fields": "f2,f3,f4,f8,f12,f14,f104,f105,f128,f136,f140",
+                        "ut": "b2884a393a59ad64002292a3e90d46a5",
+                    },
+                )
+                d = data.get("data") or {}
+                batch = d.get("diff", [])
+                items.extend(batch)
+                if total is None:
+                    total = int(d.get("total") or 0)
+                if not batch or len(items) >= limit or (total and len(items) >= total):
+                    break
             result = []
             for item in items:
                 result.append({

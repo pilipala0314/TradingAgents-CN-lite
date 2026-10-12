@@ -18,6 +18,7 @@ from foundation.registry.loader import (
     validate_arg_signatures,
     validate_against_method_table,
 )
+from foundation.registry.name_maps import SECTOR_NAME_MAPS, mapped_sector
 from foundation.registry.schema import (
     AvailabilitySpec,
     DisclosureProfile,
@@ -30,6 +31,9 @@ from foundation.registry.schema import (
 )
 
 __all__ = [
+    # name maps
+    "SECTOR_NAME_MAPS",
+    "mapped_sector",
     # schema
     "DisclosureProfile",
     "ExtractKind",

@@ -1,12 +1,15 @@
-"""东财 HTTP 统一节流入口（Keep-Alive session + Retry + 最小间隔 + 随机抖动）。
+"""东财 HTTP 统一节流入口（Keep-Alive session + 最小间隔 + 随机抖动）。
 
 提供：
 - `UA`           统一 User-Agent（与上游 a-stock-data SKILL 一致，覆盖 PC 主流浏览器）
-- `EM_SESSION`   复用 Session（带自动重试 adapter）
-- `em_get`       GET 入口（自动节流 1s + UA）
-- `em_post`      POST 入口（自动节流 1s + UA）
+- `EM_SESSION`   复用 Session（连接池复用，**不含重试**）
+- `em_get`       GET 入口（自动节流 + UA + 代理路由）
+- `em_post`      POST 入口（同上）
 
-节流间隔 / UA / 重试次数 / backoff 由环境变量控制（EM_MIN_INTERVAL_SEC / EM_USER_AGENT / EM_RETRY_*）。
+重试策略：**单一权威层**。本模块不做任何重试，重试统一由上层
+`datasource.resilience.RetryPolicy` 负责。原因见 `_build_session`。
+
+节流间隔 / UA / 连接池大小由环境变量控制（EM_MIN_INTERVAL_SEC / EM_USER_AGENT / EM_SESSION_POOL_SIZE）。
 """
 from __future__ import annotations
 
@@ -23,21 +26,20 @@ from datasource.resilience.ip_pool import proxy_for
 
 logger = logging.getLogger(__name__)
 
-# 延迟导入 urllib3 adapter，避免未装时整个包崩
+# urllib3 adapter 仅用于连接池复用（不挂重试）
 try:
     from requests.adapters import HTTPAdapter
-    from urllib3.util.retry import Retry
 
-    _HAS_RETRY = True
+    _HAS_ADAPTER = True
 except Exception:  # pragma: no cover
-    _HAS_RETRY = False
+    _HAS_ADAPTER = False
 
 
-def _env_float(name: str, default: float) -> float:
-    try:
-        return float(os.getenv(name, default))
-    except (TypeError, ValueError):
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
         return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _env_int(name: str, default: int) -> int:
@@ -47,31 +49,45 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
 # ── 统一 UA ─────────────────────────────────────────────────────────────
 UA: str = os.getenv("EM_USER_AGENT") or (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 )
 
-_EM_RETRY_TOTAL = _env_int("EM_RETRY_TOTAL", 3)
-_EM_RETRY_CONNECT = _env_int("EM_RETRY_CONNECT", 3)
-_EM_RETRY_BACKOFF = _env_float("EM_RETRY_BACKOFF", 0.6)
+# 代理传输失败是否直连兜底（默认关闭）。
+# 走代理的域名正是「直连被 WAF 封锁」的域名 → 直连兜底几乎必失败，
+# 只会白等一个超时并多打一次无效请求。若白名单里混入了「直连也可用」的域名，
+# 可置 true 恢复该行为。
+_PROXY_DIRECT_FALLBACK: bool = _env_bool("DATASOURCE_PROXY_DIRECT_FALLBACK", False)
+
+_SESSION_POOL_SIZE: int = _env_int("EM_SESSION_POOL_SIZE", 20)
 
 
-# ── 复用 Session + 自动重试 ─────────────────────────────────────────────
+# ── 复用 Session（仅连接池，无重试）─────────────────────────────────────
 def _build_session() -> requests.Session:
-    """构造一个带 Retry adapter 的 Session。失败时降级为普通 session。"""
+    """构造仅含连接池复用的 Session。
+
+    **刻意不挂 urllib3 ``Retry``**：本项目按请求付费走隧道代理，urllib3 内部
+    重试会与上层 resilience 重试叠加（``total=3`` × resilience ``3`` = 9 次/逻辑调用），
+    直接放大代理开销；且 ``status_forcelist=[429]`` 会把隧道限流的 429 静默重试，
+    既烧钱又掩盖限流信号。重试统一收敛到 ``resilience.RetryPolicy`` 单一层次
+    （可在那里按错误类型区分可重试性、可与熔断/限流协同）。
+    """
     s = requests.Session()
     s.headers.update({"User-Agent": UA})
-    if _HAS_RETRY:
+    if _HAS_ADAPTER:
         try:
             adapter = HTTPAdapter(
-                max_retries=Retry(
-                    total=_EM_RETRY_TOTAL,
-                    connect=_EM_RETRY_CONNECT,
-                    backoff_factor=_EM_RETRY_BACKOFF,
-                    status_forcelist=[429, 500, 502, 503, 504],
-                    allowed_methods=["GET", "POST"],
-                )
+                pool_connections=10,
+                pool_maxsize=_SESSION_POOL_SIZE,
+                max_retries=0,  # 重试权交给 resilience 层
             )
             s.mount("https://", adapter)
             s.mount("http://", adapter)
@@ -133,8 +149,10 @@ def em_get(
 ) -> requests.Response:
     """东财统一 GET 入口：自动节流 + 复用 session + 默认 UA。
 
-    已配置代理且域名在白名单时走代理（列表模式每请求轮换出口 IP）；
-    代理传输失败自动降级直连重试一次。
+    已配置代理且域名在白名单时走代理（列表模式每请求轮换出口 IP）。
+    代理传输失败默认**不**直连兜底（东财直连必被 WAF 拒，兜底纯浪费）——
+    异常向上抛出，由 resilience 层重试（隧道每请求换 IP，重试即换出口）。
+    需要直连兜底时置 ``DATASOURCE_PROXY_DIRECT_FALLBACK=true``。
     """
     _throttle()
     prox = proxy_for(url)
@@ -144,6 +162,8 @@ def em_get(
                 url, params=params, headers=headers, timeout=timeout, proxies=prox, **kwargs
             )
         except requests.exceptions.ConnectionError as exc:
+            if not _PROXY_DIRECT_FALLBACK:
+                raise
             logger.warning("em_get 代理请求失败(%s)，直连兜底: %s", type(exc).__name__, url)
             _throttle()
     return EM_SESSION.get(url, params=params, headers=headers, timeout=timeout, **kwargs)
@@ -166,6 +186,8 @@ def em_post(
                 url, data=data, headers=merged_headers, timeout=timeout, proxies=prox, **kwargs
             )
         except requests.exceptions.ConnectionError as exc:
+            if not _PROXY_DIRECT_FALLBACK:
+                raise
             logger.warning("em_post 代理请求失败(%s)，直连兜底: %s", type(exc).__name__, url)
             _throttle()
     return EM_SESSION.post(url, data=data, headers=merged_headers, timeout=timeout, **kwargs)

@@ -55,8 +55,39 @@ def _env_float(name: str, default: float) -> float:
 _AKSHARE_RETRY_COUNT = _env_int("AKSHARE_RETRY_COUNT", 1)
 _AKSHARE_RETRY_DELAY_SECONDS = _env_float("AKSHARE_RETRY_DELAY_SECONDS", 1.5)
 
-# 东财请求强制绕过代理（默认关闭；企业代理环境下开启会导致东财端点失败）
+# 东财请求强制绕过代理（默认关闭；开启后东财端点直连不走 IP 池）
 _EM_BYPASS_PROXY = os.getenv("DATASOURCE_EM_BYPASS_PROXY", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _em_proxies_for(url: str) -> dict[str, str] | None:
+    """东财 URL 的代理配置（未配置 / 被禁用 / 非东财域名 → None）。
+
+    akshare 内部走 requests/curl_cffi，本身不进我们的代理栈；本函数让 akshare 的
+    东财请求也能经 IP 池（付费隧道）出口：换 IP 绕 WAF + 计入 ``routed_requests`` 统计。
+    """
+    if _EM_BYPASS_PROXY or "eastmoney.com" not in url:
+        return None
+    from datasource.resilience.ip_pool import proxy_for
+
+    return proxy_for(url)
+
+
+def _em_will_proxy(url: str) -> bool:
+    """该东财 URL 是否将走代理（**不计数**，仅用于路径选择：curl_cffi vs requests）。"""
+    if _EM_BYPASS_PROXY or "eastmoney.com" not in url:
+        return False
+    from datasource.resilience.ip_pool import get_proxy_pool
+
+    return get_proxy_pool().should_proxy(url)
+
+
+def _curl_cffi_should_fallback(exc: BaseException) -> bool:
+    """curl_cffi 失败是否值得回退 requests（仅直连模式下可能走到）。
+
+    仅「调用方式不兼容」（编程错：参数/属性不支持）才回退；
+    传输类失败（连接中断）直接上抛，由 resilience 层统一重试。
+    """
+    return isinstance(exc, (TypeError, AttributeError, ValueError, NotImplementedError))
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
@@ -75,9 +106,19 @@ def _extract_market_prefixed_symbol(symbol: str) -> str:
 
 
 def _init_akshare_anti_scraping_patch() -> None:
-    """Apply EastMoney anti-scraping workarounds inspired by TradingAgents-CN-lite."""
+    """Apply EastMoney anti-scraping workarounds inspired by TradingAgents-CN-lite。
+
+    含**代理注入**：东财端点统一经 ``datasource`` IP 池（付费隧道）出口，
+    享受换 IP 绕 WAF + 计费统计（``get_proxy_pool().routed_requests``）。
+    覆盖两条路径：``requests``（Session.request 级，覆盖 get/post/Session）
+    与 ``curl_cffi``（自带 proxies 参数）。见 docs/proxy-setup.md「成本守护」。
+
+    重试：本补丁**不再内层重试**（原先 SSL 错误重试 3 次会与 resilience 层叠加烧钱），
+    统一交由 resilience.RetryPolicy 单一权威层。
+    """
     try:
         import requests
+        from requests.sessions import Session
     except ModuleNotFoundError:
         return
 
@@ -93,35 +134,53 @@ def _init_akshare_anti_scraping_patch() -> None:
         use_curl_cffi = False
 
     original_get = requests.get
+    original_request = Session.request
     last_request_time = {"time": 0.0}
     rate_limit_lock = threading.Lock()
 
-    def patched_get(url, **kwargs):
-        if "eastmoney.com" in url:
-            with rate_limit_lock:
-                elapsed = time.time() - last_request_time["time"]
-                if elapsed < 0.5:
-                    time.sleep(0.5 - elapsed)
-                last_request_time["time"] = time.time()
+    def _throttle_em() -> None:
+        with rate_limit_lock:
+            elapsed = time.time() - last_request_time["time"]
+            if elapsed < 0.5:
+                time.sleep(0.5 - elapsed)
+            last_request_time["time"] = time.time()
 
-        if use_curl_cffi and curl_requests is not None and "eastmoney.com" in url:
+    # ── ① Session.request 级：东财请求注入代理 + 节流（覆盖 requests.get / Session / post 全路径）──
+    if not getattr(Session, "_ashare_agent_proxy_patched", False):
+
+        def patched_request(self, method, url, **kwargs):
+            # 已显式传 proxies 的调用（如 _shared.http_client.em_get）不重复注入/节流
+            if "eastmoney.com" in url and not kwargs.get("proxies"):
+                _throttle_em()
+                prox = _em_proxies_for(url)
+                if prox:
+                    kwargs["proxies"] = prox
+            return original_request(self, method, url, **kwargs)
+
+        Session.request = patched_request
+        Session._ashare_agent_proxy_patched = True
+
+    # ── ② requests.get 级：UA/头 + 直连模式下 curl_cffi 指纹绕过 ──
+    # 路径选择：**配了代理 → 直接 requests+代理（单次请求，不花冤枉钱）**；
+    # 未配代理 → 尝试 curl_cffi（TLS 指纹绕过东财反爬）。避免「curl_cffi 带代理失败
+    # 再回退 requests」造成的双倍付费消费。
+    def patched_get(url, **kwargs):
+        is_em = "eastmoney.com" in url
+        if use_curl_cffi and curl_requests is not None and is_em and not _em_will_proxy(url):
+            _throttle_em()
             try:
-                curl_kwargs = {
+                curl_kwargs: dict[str, Any] = {
                     "timeout": kwargs.get("timeout", 10),
                     "impersonate": "chrome120",
                 }
-                if "params" in kwargs:
-                    curl_kwargs["params"] = kwargs["params"]
-                if "data" in kwargs:
-                    curl_kwargs["data"] = kwargs["data"]
-                if "json" in kwargs:
-                    curl_kwargs["json"] = kwargs["json"]
+                for key in ("params", "data", "json"):
+                    if key in kwargs:
+                        curl_kwargs[key] = kwargs[key]
                 return curl_requests.get(url, **curl_kwargs)
             except Exception as exc:
-                logger.warning("curl_cffi 绕过东财反爬失败，回退 requests: %s", exc)
-
-        if _EM_BYPASS_PROXY and "eastmoney.com" in url:
-            kwargs["proxies"] = {"http": None, "https": None}
+                if not _curl_cffi_should_fallback(exc):
+                    raise
+                logger.warning("curl_cffi 调用不兼容，回退 requests: %s", exc)
 
         headers = kwargs.setdefault("headers", {})
         headers.setdefault(
@@ -139,17 +198,9 @@ def _init_akshare_anti_scraping_patch() -> None:
         # 兜底路径必须注入超时：akshare 内部多数 requests.get 不带 timeout，
         # 无超时挂起的请求会让 to_thread worker 线程永久泄漏（协程被 wait_for 取消后线程无法取消）。
         kwargs.setdefault("timeout", 10)
-
-        for attempt in range(3):
-            try:
-                return original_get(url, **kwargs)
-            except Exception as exc:
-                error_text = str(exc)
-                is_ssl_error = any(token in error_text for token in ("SSL", "ssl", "UNEXPECTED_EOF_WHILE_READING"))
-                if is_ssl_error and attempt < 2:
-                    time.sleep(0.5 * (attempt + 1))
-                    continue
-                raise
+        # 无内层重试：单次尝试，失败上抛由 resilience 层统一重试（避免重复消费代理请求）
+        # 代理注入与节流由 ① Session.request 统一处理（此处不重复）
+        return original_get(url, **kwargs)
 
     requests.get = patched_get
     requests._ashare_agent_headers_patched = True
@@ -577,14 +628,24 @@ class AkshareProvider:
             raise
 
     async def get_northbound_flow(self) -> pd.DataFrame:
-        """获取北向资金汇总。"""
+        """获取北向资金汇总（仅北向两通道：沪股通/深股通，南向通道剔除）。
+
+        上游 ``stock_hsgt_fund_flow_summary_em`` 返回沪深港通 4 通道
+        （沪股通/深股通=北向，港股通(沪/深)=南向）；本方法按方法名语义
+        只保留 ``资金方向=='北向'`` 的行，供北向净流入按交易日求和使用。
+        """
         self._ensure_akshare()
         try:
             logger.debug("正在获取北向资金汇总...")
-            return await self._run_with_retry(ak.stock_hsgt_fund_flow_summary_em)
+            df = await self._run_with_retry(ak.stock_hsgt_fund_flow_summary_em)
         except Exception as e:
             logger.error("获取北向资金汇总失败: %s", e)
             raise
+        if "资金方向" in df.columns:
+            df = df[df["资金方向"].astype(str) == "北向"]
+        if df.empty:
+            raise ProviderError("akshare get_northbound_flow: 上游无北向通道数据")
+        return df.reset_index(drop=True)
 
     async def get_individual_fund_flow(self, symbol: str, market: str = "") -> pd.DataFrame:
         """获取个股资金流向。market 取值示例: sz/sh/bj；留空则从代码自动推断。"""

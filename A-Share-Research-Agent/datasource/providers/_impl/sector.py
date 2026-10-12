@@ -74,29 +74,40 @@ def fetch_industry_ranking(limit: int = 90) -> list[dict[str, Any]]:
     失败语义：网络/解析错误或响应缺 data（WAF 剥空）→ raise（DataSource 重试/fallback），不静默返空。
     """
     url = "https://push2.eastmoney.com/api/qt/clist/get"
-    params = {
-        "pn": "1",
-        "pz": str(limit),
-        "po": "1",
-        "np": "1",
-        "fltt": "2",
-        "invt": "2",
-        "fid": "f3",
-        "fs": "m:90+t:2+f:!50",  # m:90 = 行业；t:2 = 板块；f:!50 = 排除东方财富板块
-        "fields": "f1,f2,f3,f4,f12,f14,f128,f136",
-    }
     headers = {"User-Agent": UA, "Referer": "https://quote.eastmoney.com/"}
     try:
-        r = em_get(url, params=params, headers=headers, timeout=15)
-        d = r.json()
+        # EM clist 单页 pz 上限 100，行业板块共 ~496 个 → 按页抓全
+        pz = min(limit, 100)
+        max_pages = (limit + pz - 1) // pz + 1
+        diff: list[dict[str, Any]] = []
+        total: int | None = None
+        for pn in range(1, max_pages + 1):
+            params = {
+                "pn": str(pn),
+                "pz": str(pz),
+                "po": "1",
+                "np": "1",
+                "fltt": "2",
+                "invt": "2",
+                "fid": "f3",
+                "fs": "m:90+t:2+f:!50",  # m:90 = 行业；t:2 = 板块；f:!50 = 排除东方财富板块
+                "fields": "f1,f2,f3,f4,f12,f14,f128,f136",
+            }
+            r = em_get(url, params=params, headers=headers, timeout=15)
+            d = r.json()
+            data = d.get("data")
+            if data is None:
+                raise RuntimeError("eastmoney_industry_ranking: 响应缺少 data（可能被 WAF 拦截）")
+            batch = data.get("diff") or []
+            diff.extend(batch)
+            if total is None:
+                total = int(data.get("total") or 0)
+            if not batch or len(diff) >= limit or (total and len(diff) >= total):
+                break
     except Exception as exc:
         # 网络/解析错误 → raise（DataSource 重试/fallback），不静默返空
         logger.warning("eastmoney_industry_ranking failed: %s", exc)
         raise RuntimeError(f"eastmoney_industry_ranking failed: {exc}") from exc
-    data = d.get("data")
-    if data is None:
-        raise RuntimeError("eastmoney_industry_ranking: 响应缺少 data（可能被 WAF 拦截）")
-    diff = data.get("diff") or []
     rows: list[dict[str, Any]] = []
     for it in diff:
         rows.append(

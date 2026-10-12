@@ -76,6 +76,101 @@ class TestRetryPolicy:
         assert len(calls) == 1  # 过滤不命中，不重试
 
 
+class _StatusError(Exception):
+    """模拟 httpx.HTTPStatusError：带 response.status_code。"""
+
+    def __init__(self, status: int):
+        super().__init__(f"HTTP {status}")
+        self.response = type("_Resp", (), {"status_code": status})()
+
+
+@pytest.mark.unit
+class TestRetryCostGuard:
+    """成本守护：确定性失败不得重试（每次重试 = 一次付费请求）。"""
+
+    def test_non_retryable_provider_error_not_retried(self):
+        from datasource.errors import NonRetryableProviderError
+
+        calls = []
+
+        async def fn():
+            calls.append(1)
+            raise NonRetryableProviderError("bad param")
+
+        async def main():
+            policy = RetryPolicy(RetryConfig(max_attempts=3, initial_delay_sec=0.01))
+            await policy.execute(fn)
+
+        with pytest.raises(NonRetryableProviderError):
+            asyncio.run(main())
+        assert len(calls) == 1  # 不重试 → 不放大付费请求
+
+    def test_http_403_not_retried(self):
+        calls = []
+
+        async def fn():
+            calls.append(1)
+            raise _StatusError(403)
+
+        async def main():
+            policy = RetryPolicy(RetryConfig(max_attempts=3, initial_delay_sec=0.01))
+            await policy.execute(fn)
+
+        with pytest.raises(_StatusError):
+            asyncio.run(main())
+        assert len(calls) == 1
+
+    def test_http_429_is_retried(self):
+        calls = []
+
+        async def fn():
+            calls.append(1)
+            if len(calls) < 2:
+                raise _StatusError(429)
+            return "ok"
+
+        async def main():
+            policy = RetryPolicy(RetryConfig(max_attempts=3, initial_delay_sec=0.01))
+            return await policy.execute(fn)
+
+        assert asyncio.run(main()) == "ok"
+        assert len(calls) == 2  # 429 限流值得换 IP 重试
+
+    def test_cause_chain_detected(self):
+        """根因被 ProviderError 包裹时仍需识别（provider 普遍包装异常）。"""
+        from datasource.errors import NonRetryableProviderError
+
+        calls = []
+
+        async def fn():
+            calls.append(1)
+            try:
+                raise NonRetryableProviderError("inner")
+            except NonRetryableProviderError as inner:
+                raise ValueError("wrapped") from inner
+
+        async def main():
+            policy = RetryPolicy(RetryConfig(max_attempts=3, initial_delay_sec=0.01))
+            await policy.execute(fn)
+
+        with pytest.raises(ValueError):
+            asyncio.run(main())
+        assert len(calls) == 1
+
+    def test_is_retryable_helper(self):
+        from datasource.errors import NonRetryableProviderError
+        from datasource.resilience.retry import is_retryable
+
+        assert is_retryable(ConnectionError("transient")) is True
+        assert is_retryable(TimeoutError("slow")) is True
+        assert is_retryable(_StatusError(500)) is True
+        assert is_retryable(_StatusError(429)) is True
+        assert is_retryable(_StatusError(408)) is True
+        assert is_retryable(_StatusError(403)) is False
+        assert is_retryable(_StatusError(404)) is False
+        assert is_retryable(NonRetryableProviderError("x")) is False
+
+
 @pytest.mark.unit
 class TestCircuitBreaker:
     def test_opens_after_threshold(self):

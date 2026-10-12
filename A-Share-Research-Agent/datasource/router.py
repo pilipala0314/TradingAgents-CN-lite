@@ -381,13 +381,25 @@ class DataSource:
         if explicit is not None:
             return explicit
         if self._default_resilience is not None:
-            # 每 provider 独立策略：限流/熔断互不串扰，避免单 provider 故障拖死全局配额
+            # 每 provider 独立实例（限流/熔断/重试状态互不串扰），
+            # 但**沿用** default_resilience 的 config（此前误用 _build_default_policy()
+            # 硬编码重建，导致注入的策略/配置被静默忽略）。
             policy = self._default_provider_policies.get(provider)
             if policy is None:
-                policy = self._build_default_policy()
+                policy = self._clone_policy(self._default_resilience)
                 self._default_provider_policies[provider] = policy
             return policy
         return None
+
+    @staticmethod
+    def _clone_policy(src: ResiliencePolicy) -> ResiliencePolicy:
+        """用同一套 config 构造全新实例（隔离各 provider 的限流/熔断/重试状态）。"""
+        return ResiliencePolicy(
+            retry=src.retry.config if src.retry is not None else None,
+            rate_limit=src.rate_limit.config if src.rate_limit is not None else None,
+            circuit=src.circuit.config if src.circuit is not None else None,
+            bulkhead=src.bulkhead.config if src.bulkhead is not None else None,
+        )
 
     def _build_cache_key(self, method: str, args: tuple, kwargs: dict, provider: str | None = None) -> str:
         normalized = {"method": method, "provider": provider or "", "args": list(args), "kwargs": sorted(kwargs.items())}

@@ -329,3 +329,101 @@ class TestRealRegistryUnderTotalBlock:
         assert pack.data_quality
         # 无任何"假值"：所有因子 value 必须为 None（不能是 0/编造）
         assert all(f.confidence == 0.0 for f in pack.factors)
+
+
+@pytest.mark.unit
+class TestComponentLoopCostGuard:
+    """成分股循环成本守护：系统性故障早停，避免逐只成分股白烧付费请求。
+
+    背景：member_fund_flow / sector_news 逐成分股调用（默认上限 60 只）。
+    若该源对整类接口失效（WAF 封锁），不早停就是 60~187 次无效请求（每次还含重试）。
+    """
+
+    def _member_registry(self):
+        return _registry(
+            _factor(
+                "f_member",
+                dimension=FactorDimension.CAPITAL,
+                sources=[
+                    _src(
+                        method="get_flow",
+                        args={"symbol": "{component}"},
+                        match={"日期": "{trade_date}"},
+                        extract_kind=ExtractKind.SUM,
+                        field="v",
+                        unit_scale=1e-8,
+                    )
+                ],
+                requires_components=True,
+            )
+        )
+
+    def test_systemic_failure_aborts_early(self):
+        codes = [f"{600000 + i:06d}" for i in range(20)]
+        ds = _ds(
+            {
+                "get_industry_board_components": [{"代码": c} for c in codes],
+                "get_flow": ConnectionError("WAF blocked"),
+            }
+        )
+        pack = asyncio.run(
+            build_sector_pack("半导体", "2026-09-30", registry=self._member_registry(), ds=ds)
+        )
+        f = pack.factors[0]
+
+        flow_calls = [c for c in ds.providers["fake"].calls if c[0] == "get_flow"]
+        # 早停：绝不该把 20 只全部尝试（阈值 8 + 少量并发在飞）
+        assert len(flow_calls) < len(codes)
+        assert len(flow_calls) <= 12
+        assert f.value is None
+        assert f.evidence[0].status == DataStatus.FAILED
+        assert "系统性故障" in (f.evidence[0].preview or "")
+
+    def test_flaky_source_never_aborts(self):
+        """抖动源（有成功即视为可用）不得误停——避免丢数据。"""
+        codes = [f"{600000 + i:06d}" for i in range(20)]
+        seen = {"n": 0}
+
+        def _flow(*args, **kwargs):
+            seen["n"] += 1
+            if seen["n"] <= 4:  # 前 4 次成功 → 说明源可用
+                return [{"日期": "2026-09-30", "v": 1e8}]
+            raise ConnectionError("flaky")  # 之后抖动失败
+
+        ds = _ds(
+            {
+                "get_industry_board_components": [{"代码": c} for c in codes],
+                "get_flow": _flow,
+            }
+        )
+        pack = asyncio.run(
+            build_sector_pack("半导体", "2026-09-30", registry=self._member_registry(), ds=ds)
+        )
+        f = pack.factors[0]
+
+        flow_calls = [c for c in ds.providers["fake"].calls if c[0] == "get_flow"]
+        assert len(flow_calls) == len(codes)  # 有成功响应 → 全程不早停
+        assert "系统性故障" not in (f.evidence[0].preview or "")
+        assert f.value is not None  # 成功部分仍产出值，未丢数据
+
+    def test_healthy_endpoint_never_aborts(self):
+        codes = [f"{600000 + i:06d}" for i in range(12)]
+
+        def _flow(*args, **kwargs):
+            return [{"日期": "2026-09-30", "v": 1e8}]
+
+        ds = _ds(
+            {
+                "get_industry_board_components": [{"代码": c} for c in codes],
+                "get_flow": _flow,
+            }
+        )
+        pack = asyncio.run(
+            build_sector_pack("半导体", "2026-09-30", registry=self._member_registry(), ds=ds)
+        )
+        f = pack.factors[0]
+
+        flow_calls = [c for c in ds.providers["fake"].calls if c[0] == "get_flow"]
+        assert len(flow_calls) == len(codes)  # 健康端点：不得误停
+        assert "系统性故障" not in (f.evidence[0].preview or "")
+        assert f.value == pytest.approx(12.0)  # 12 只 × 1e8 × 1e-8

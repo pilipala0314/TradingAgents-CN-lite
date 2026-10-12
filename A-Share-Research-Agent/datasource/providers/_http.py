@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any
 
 import httpx
@@ -23,6 +24,20 @@ DEFAULT_HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
     "Accept": "application/json, text/plain, */*",
 }
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+# 代理传输失败是否直连兜底（默认关闭）。
+# 走代理的域名正是「直连被 WAF 封锁」的域名 → 直连兜底几乎必失败，
+# 只会白等一个超时。异常直接抛出，由 resilience 层重试（隧道每请求换 IP）。
+# 见 `_shared/http_client.py` 同名开关（两台 HTTP 栈行为一致）。
+_PROXY_DIRECT_FALLBACK: bool = _env_bool("DATASOURCE_PROXY_DIRECT_FALLBACK", False)
 
 # 客户端池：
 # - 直连池：单 client
@@ -124,7 +139,7 @@ async def _throttle_if_eastmoney(url: str) -> None:
 
 
 async def _request(method: str, url: str, **kwargs: Any) -> httpx.Response:
-    """统一请求入口：节流 + 代理路由 + 传输失败直连兜底 + raise_for_status。"""
+    """统一请求入口：节流 + 代理路由 + （可选）直连兜底 + raise_for_status。"""
     await _throttle_if_eastmoney(url)
     pool = get_proxy_pool()
     proxied = bool(url) and pool.should_proxy(url)
@@ -132,7 +147,9 @@ async def _request(method: str, url: str, **kwargs: Any) -> httpx.Response:
     try:
         resp = await client.request(method, url, **kwargs)
     except httpx.TransportError as exc:
-        if not proxied:
+        # 走代理的域名 = 直连被 WAF 封锁的域名 → 直连兜底几乎必失败（白等超时）。
+        # 默认直接抛出，交由 resilience 层重试（隧道重试即换出口 IP）。
+        if not proxied or not _PROXY_DIRECT_FALLBACK:
             raise
         logger.warning("代理请求失败(%s)，直连兜底重试: %s", type(exc).__name__, url)
         await _throttle_if_eastmoney(url)

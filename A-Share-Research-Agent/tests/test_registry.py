@@ -21,6 +21,7 @@ from foundation.registry import (
     RegistryError,
     SourceSpec,
     load_registry,
+    mapped_sector,
     validate_arg_signatures,
     validate_against_method_table,
 )
@@ -356,3 +357,28 @@ class TestLoaderErrors:
         with pytest.raises(RegistryError) as exc:
             load_registry(p)
         assert "get_removed_api" in str(exc.value)
+
+
+@pytest.mark.unit
+class TestNameMaps:
+    """跨口径板块名称路由：高置信映射 + 未映射透传（诚实降级前提）。"""
+
+    def test_known_mapping(self):
+        assert mapped_sector("sina", "半导体") == "电子器件"
+        assert mapped_sector("sina", "银行") == "金融行业"
+        assert mapped_sector("sina", "汽车整车") == "汽车制造"
+
+    def test_unknown_passthrough(self):
+        # 未映射 → 原样透传（若与源内名称一致则直接命中，否则 EMPTY）
+        assert mapped_sector("sina", "钢铁行业") == "钢铁行业"
+        assert mapped_sector("sina", "不存在的板块") == "不存在的板块"
+
+    def test_unknown_provider_passthrough(self):
+        assert mapped_sector("no_such_source", "半导体") == "半导体"
+
+    def test_registry_sina_entry_uses_mapped_var(self):
+        """注册表 sina 源的 match 必须引用 {sector_sina}（名称路由变量）。"""
+        reg = load_registry(REGISTRY_PATH)
+        factor = next(f for f in reg.factors if f.id == "sector_pct_change")
+        sina = next(s for s in factor.sources if s.provider == "sina")
+        assert sina.match == {"board_name": "{sector_sina}"}

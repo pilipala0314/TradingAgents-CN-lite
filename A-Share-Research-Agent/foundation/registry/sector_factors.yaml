@@ -39,7 +39,7 @@ factors:
   - provider: eastmoney
     method: get_industry_ranking
     caliber: eastmoney
-    args: {limit: 90}
+    args: {limit: 500}
     match: {board_name: "{sector}"}
     field: change_pct
     priority: 0
@@ -47,7 +47,7 @@ factors:
   - provider: a_stock_data
     method: get_industry_ranking
     caliber: eastmoney
-    args: {limit: 90}
+    args: {limit: 500}
     match: {board_name: "{sector}"}
     field: change_pct
     priority: 1
@@ -58,10 +58,10 @@ factors:
     method: get_industry_ranking
     caliber: sina
     args: {limit: 90}
-    match: {board_name: "{sector}"}
+    match: {board_name: "{sector_sina}"}
     field: change_pct
     priority: 2
-    note: 新浪行业分类口径，与东财行业分类未必一一对应
+    note: 新浪行业分类口径；{sector_sina} 经 name_maps 名称路由（仅高置信映射，未映射板块诚实 EMPTY），值本身仍是 sina 口径
 
     extract_kind: value
 - id: sector_recent_bars
@@ -171,8 +171,8 @@ factors:
     method: get_northbound_flow
     caliber: akshare
     args: {}
-    note: ''
-    extract_kind: value
+    note: 沪股通+深股通求和（provider 已按北向语义剔除南向通道）
+    extract_kind: sum
     field: 资金净流入
     match:
       交易日: '{trade_date}'

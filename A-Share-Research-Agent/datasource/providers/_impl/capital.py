@@ -51,7 +51,7 @@ def fetch_fund_flow_minute(code: str) -> list[dict[str, Any]]:
         raise RuntimeError(f"eastmoney_fund_flow_minute({code}) failed: {exc}") from exc
 
     rows: list[dict[str, Any]] = []
-    for line in d.get("data", {}).get("klines", []):
+    for line in (d.get("data") or {}).get("klines", []):
         parts = line.split(",")
         if len(parts) >= 6:
             try:

@@ -38,6 +38,7 @@ class TestSectorFailureSemantics:
     def test_industry_ranking_ok_maps_fields(self, monkeypatch):
         payload = {
             "data": {
+                "total": 1,
                 "diff": [
                     {"f12": "BK1036", "f14": "半导体", "f3": 2.35, "f128": "中芯国际", "f136": 12.34}
                 ]

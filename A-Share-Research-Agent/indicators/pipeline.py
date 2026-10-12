@@ -26,6 +26,7 @@ from foundation.registry import (
     ExtractKind,
     FactorRegistry,
     FactorSpec,
+    SECTOR_NAME_MAPS,
     SourceSpec,
     load_registry,
 )
@@ -58,6 +59,12 @@ DEFAULT_VARS: dict[str, str] = {"index_code": "000001"}
 
 _ROUTE_TIMEOUT = 25.0
 _EVIDENCE_ERROR_MAX = 240
+
+# 成分股循环系统性故障早停阈值：至今零响应且连续失败达此数 → 判源级故障，跳过其余成分股。
+# 取 8（而非 5）以降低对高抖动源的误判概率（源 50% 失败时前 8 连败仅约 0.4%）。
+_COMPONENT_ABORT_THRESHOLD = 8
+# 早停哨兵：被跳过的成分股（非异常、非空，需与真实结果区分）
+_SKIPPED: object = object()
 
 __all__ = ["RunConfig", "ComponentSet", "build_sector_pack", "normalize_trade_date"]
 
@@ -123,6 +130,9 @@ async def build_sector_pack(
         "trade_date": cfg.trade_date.replace("-", ""),
         **DEFAULT_VARS,
     }
+    # 跨口径板块名路由：为有映射表的源注入 sector_{provider}（注册表按需引用）
+    for prov, mapping in SECTOR_NAME_MAPS.items():
+        variables[f"sector_{prov}"] = mapping.get(cfg.sector, cfg.sector)
 
     components: ComponentSet | None = None
     if any(f.requires_components for f in reg.factors):
@@ -319,22 +329,47 @@ async def _eval_component_source(
 
     t0 = time.perf_counter()
 
+    # 系统性故障早停：若某源对整类成分股接口失效（WAF 封锁 / 接口下线），
+    # 逐只成分股会放大成 60~187 次无效请求（每次还含重试）→ 白烧付费代理。
+    # 判据从严：**至今零响应**且连续失败达阈值，才判系统性故障并跳过其余成分股。
+    # （一旦有任一成分股拿到响应，说明源可用，后续失败只当抖动，绝不停——避免丢数据）
+    fail_streak = 0
+    responded = False
+    systemic_abort = False
+    abort_at = min(_COMPONENT_ABORT_THRESHOLD, len(selected))
+
     async def _one(code: str) -> Any:
+        nonlocal fail_streak, responded, systemic_abort
+        if systemic_abort:
+            return _SKIPPED
         comp_vars = {**variables, "component": code}
         args = resolve_templates(s.args, comp_vars)
-        async with sem:
-            data = await src.route(s.method, provider=s.provider, use_cache=False, timeout=_ROUTE_TIMEOUT, **args)
+        try:
+            async with sem:
+                if systemic_abort:  # 拿到并发槽后二次确认（可能有更早的任务已触发早停）
+                    return _SKIPPED
+                data = await src.route(s.method, provider=s.provider, use_cache=False, timeout=_ROUTE_TIMEOUT, **args)
+        except BaseException:
+            fail_streak += 1
+            if not responded and fail_streak >= abort_at:
+                systemic_abort = True
+            raise
+        responded = True  # 源对成分股有响应（成功或空）→ 视为源可用，不再早停
+        fail_streak = 0
         return extract_source(s, data, comp_vars, component_set=None)
 
     outcomes = await asyncio.gather(*(_one(c) for c in selected), return_exceptions=True)
 
     ok_count = 0
     empty_count = 0
+    skipped_count = 0
     errors: list[str] = []
     nums: list[float] = []
     payloads: list[Any] = []
     for outcome in outcomes:
-        if isinstance(outcome, BaseException):
+        if outcome is _SKIPPED:
+            skipped_count += 1
+        elif isinstance(outcome, BaseException):
             errors.append(f"{type(outcome).__name__}: {outcome}"[:120])
         elif outcome.status == DataStatus.OK:
             ok_count += 1
@@ -349,7 +384,11 @@ async def _eval_component_source(
 
     latency = _ms(t0)
     suffix = f"；已截断 {len(selected)}/{len(components.codes)}" if truncated else ""
+    if systemic_abort:
+        suffix += f"；疑似系统性故障（连续 {abort_at} 只无响应），跳过其余 {skipped_count} 只"
     summary = f"成分股 {len(selected)} 只：ok={ok_count} empty={empty_count} err={len(errors)}{suffix}"
+    if skipped_count and not systemic_abort:
+        summary += f"；跳过 {skipped_count}"
 
     if ok_count == 0:
         status = DataStatus.FAILED if errors else DataStatus.EMPTY

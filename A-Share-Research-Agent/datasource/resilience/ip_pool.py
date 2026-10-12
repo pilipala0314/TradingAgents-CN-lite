@@ -66,6 +66,7 @@ class ProxyPool:
         self._proxies: list[dict[str, str]] = []  # 代理列表（dict 带 http/https 键）
         self._index = 0                          # 轮换游标
         self._generation = 0                     # 配置代数（reload 后递增，供 _http 感知）
+        self._routed = 0                         # 已路由到代理的请求数（= 付费请求数，含重试）
         self._hosts = self._load_hosts()
         self._load_proxies()
 
@@ -121,15 +122,21 @@ class ProxyPool:
         return any(host == h or host.endswith("." + h) for h in self._hosts)
 
     def proxy_for(self, url: str) -> dict[str, str] | None:
-        """取该 URL 的代理配置；不该走代理或未配置返回 None（=直连）。"""
+        """取该 URL 的代理配置；不该走代理或未配置返回 None（=直连）。
+
+        返回值非 None 即代表「本次请求将走代理」→ 计入 ``routed_requests``
+        （含重试；用于观测付费请求消耗，避免无感放大）。
+        """
         if not self.should_proxy(url):
             return None
         with self._lock:
             if self._tunnel:
+                self._routed += 1
                 return {"http": self._tunnel, "https": self._tunnel}
             if self._proxies:
                 p = self._proxies[self._index % len(self._proxies)]
                 self._index += 1  # 轮换
+                self._routed += 1
                 return p
             return None
 
@@ -161,7 +168,21 @@ class ProxyPool:
                 "tunnel": _mask(self._tunnel) if self._tunnel else None,
                 "list_size": len(self._proxies),
                 "hosts": list(self._hosts),
+                "routed_requests": self._routed,  # 累计已路由到代理的请求数（含重试）
             }
+
+    @property
+    def routed_requests(self) -> int:
+        """累计已路由到代理的请求数（约等于付费请求数，含重试）。"""
+        with self._lock:
+            return self._routed
+
+    def reset_counter(self) -> int:
+        """清零请求计数并返回清零前的值（用于分段测量消耗）。"""
+        with self._lock:
+            prev = self._routed
+            self._routed = 0
+            return prev
 
 
 # ── 模块级单例 ────────────────────────────────────────────────────
