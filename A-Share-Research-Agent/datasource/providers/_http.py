@@ -89,6 +89,27 @@ async def _get_direct_client() -> httpx.AsyncClient:
     return c
 
 
+async def _get_client_for(proxy: dict[str, str] | None) -> httpx.AsyncClient:
+    """按代理配置返回 client（None=直连池）；代理池按地址独立池化。"""
+    if proxy is None:
+        return await _get_direct_client()
+
+    pool = get_proxy_pool()
+    global _proxy_clients, _proxy_clients_generation
+    key = _proxy_key(proxy)
+    c = _proxy_clients.get(key)
+    if c is None or c.is_closed or _proxy_clients_generation != pool.generation:
+        async with _client_lock:
+            if _proxy_clients_generation != pool.generation:
+                _proxy_clients = {}  # reload/续提 后旧代理 client 全部作废
+                _proxy_clients_generation = pool.generation
+            c = _proxy_clients.get(key)
+            if c is None or c.is_closed:
+                c = _build_client(proxy)
+                _proxy_clients[key] = c
+    return c
+
+
 async def _get_client(url: str | None = None) -> httpx.AsyncClient:
     """按 URL 返回 client：白名单域名走代理池（每请求推进轮换），其余走直连池。"""
     pool = get_proxy_pool()
@@ -97,20 +118,7 @@ async def _get_client(url: str | None = None) -> httpx.AsyncClient:
     proxy = pool.proxy_for(url)  # 每次调用推进列表轮换；隧道模式恒定
     if proxy is None:  # 竞态：reload() 后代理被清空
         return await _get_direct_client()
-
-    global _proxy_clients, _proxy_clients_generation
-    key = _proxy_key(proxy)
-    c = _proxy_clients.get(key)
-    if c is None or c.is_closed or _proxy_clients_generation != pool.generation:
-        async with _client_lock:
-            if _proxy_clients_generation != pool.generation:
-                _proxy_clients = {}  # reload 后旧代理 client 全部作废
-                _proxy_clients_generation = pool.generation
-            c = _proxy_clients.get(key)
-            if c is None or c.is_closed:
-                c = _build_client(proxy)
-                _proxy_clients[key] = c
-    return c
+    return await _get_client_for(proxy)
 
 
 async def get_shared_client(url: str | None = None):
@@ -143,12 +151,16 @@ async def _request(method: str, url: str, **kwargs: Any) -> httpx.Response:
     await _throttle_if_eastmoney(url)
     pool = get_proxy_pool()
     proxied = bool(url) and pool.should_proxy(url)
-    client = await _get_client(url)
+    proxy_used = pool.proxy_for(url) if proxied else None
+    client = await _get_client_for(proxy_used)
     try:
         resp = await client.request(method, url, **kwargs)
     except httpx.TransportError as exc:
+        # 代理出口失效（隧道到期/被 WAF 踢）→ 上报摘除，下次请求自动提取新 IP
+        if proxied:
+            pool.report_proxy_failure(proxy_used)
         # 走代理的域名 = 直连被 WAF 封锁的域名 → 直连兜底几乎必失败（白等超时）。
-        # 默认直接抛出，交由 resilience 层重试（隧道重试即换出口 IP）。
+        # 默认直接抛出，交由 resilience 层重试（重试即换出口 IP）。
         if not proxied or not _PROXY_DIRECT_FALLBACK:
             raise
         logger.warning("代理请求失败(%s)，直连兜底重试: %s", type(exc).__name__, url)

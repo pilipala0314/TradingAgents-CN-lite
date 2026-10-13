@@ -162,6 +162,10 @@ def em_get(
                 url, params=params, headers=headers, timeout=timeout, proxies=prox, **kwargs
             )
         except requests.exceptions.ConnectionError as exc:
+            # 代理出口失效 → 摘除，下次调用自动提取新 IP（提取型）；默认不直连兜底
+            from datasource.resilience.ip_pool import report_proxy_failure
+
+            report_proxy_failure(prox)
             if not _PROXY_DIRECT_FALLBACK:
                 raise
             logger.warning("em_get 代理请求失败(%s)，直连兜底: %s", type(exc).__name__, url)
@@ -186,6 +190,9 @@ def em_post(
                 url, data=data, headers=merged_headers, timeout=timeout, proxies=prox, **kwargs
             )
         except requests.exceptions.ConnectionError as exc:
+            from datasource.resilience.ip_pool import report_proxy_failure
+
+            report_proxy_failure(prox)
             if not _PROXY_DIRECT_FALLBACK:
                 raise
             logger.warning("em_post 代理请求失败(%s)，直连兜底: %s", type(exc).__name__, url)

@@ -85,6 +85,9 @@ class TestHttpxStackDirectFallbackGate:
             def proxy_for(self, url):
                 return {"https": "http://p:1"}
 
+            def report_proxy_failure(self, proxy):
+                return None
+
         monkeypatch.setattr(http_mod, "get_proxy_pool", lambda: _Pool())
 
         async def _no_throttle(url):
@@ -99,10 +102,10 @@ class TestHttpxStackDirectFallbackGate:
             async def request(self, *a, **k):
                 raise httpx.ConnectError("tunnel down")
 
-        async def _get_client(url=None):
+        async def _get_client_for(proxy=None):
             return _Client()
 
-        monkeypatch.setattr(http_mod, "_get_client", _get_client)
+        monkeypatch.setattr(http_mod, "_get_client_for", _get_client_for)
 
         async def _main():
             await http_mod._request("GET", "https://push2.eastmoney.com/x")
@@ -125,13 +128,13 @@ class TestHttpxStackDirectFallbackGate:
                 calls.append("direct")
                 return httpx.Response(200, request=httpx.Request("GET", "https://x"))
 
-        async def _get_client(url=None):
+        async def _get_client_for(proxy=None):
             return _ProxyClient()
 
         async def _get_direct():
             return _DirectClient()
 
-        monkeypatch.setattr(http_mod, "_get_client", _get_client)
+        monkeypatch.setattr(http_mod, "_get_client_for", _get_client_for)
         monkeypatch.setattr(http_mod, "_get_direct_client", _get_direct)
 
         async def _main():

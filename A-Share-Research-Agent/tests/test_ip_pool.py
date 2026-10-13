@@ -9,6 +9,7 @@ class TestProxyPoolConfig:
     def test_unconfigured_returns_none(self, monkeypatch):
         monkeypatch.delenv("DATASOURCE_PROXY", raising=False)
         monkeypatch.delenv("DATASOURCE_PROXY_LIST", raising=False)
+        monkeypatch.delenv("DATASOURCE_PROXY_API", raising=False)
         pool = ProxyPool()
         assert pool.is_configured() is False
         assert pool.proxy_for("https://push2.eastmoney.com/x") is None
@@ -125,3 +126,97 @@ class TestMask:
 
     def test_no_password_unchanged(self):
         assert _mask("http://host:8080") == "http://host:8080"
+
+
+def _extract_api_pool(monkeypatch) -> ProxyPool:
+    """构造仅配提取 API 的池（清空隧道/列表）。"""
+    monkeypatch.delenv("DATASOURCE_PROXY", raising=False)
+    monkeypatch.delenv("DATASOURCE_PROXY_LIST", raising=False)
+    monkeypatch.setenv("DATASOURCE_PROXY_API", "http://api.example/get")
+    pool = ProxyPool()
+    return pool
+
+
+@pytest.mark.unit
+class TestDynamicExtraction:
+    def test_parse_text_and_json(self):
+        import datasource.resilience.ip_pool as m
+
+        p = m.ProxyPool()
+        # 纯文本（巨量 result_type=text&split=1）
+        assert p._parse_extract_response("1.2.3.4:8080\n5.6.7.8:9090\n") == [
+            "1.2.3.4:8080", "5.6.7.8:9090"
+        ]
+        # 巨量 JSON（对象项 ip/port）
+        js = '{"code":200,"data":{"proxy_list":[{"ip":"9.9.9.9","port":3000}]}}'
+        assert p._parse_extract_response(js) == ["9.9.9.9:3000"]
+        # JSON 字符串项
+        js2 = '{"data":[{"proxy":"8.8.8.8:80"}]}'
+        assert p._parse_extract_response(js2) == ["8.8.8.8:80"]
+        # 错误 / 空响应
+        assert p._parse_extract_response('{"code":10003,"msg":"余额不足"}') == []
+        assert p._parse_extract_response("") == []
+
+    def test_lazy_extract_on_first_request(self, monkeypatch):
+        pool = _extract_api_pool(monkeypatch)
+        assert pool.is_configured() is True
+        assert pool._proxies == []  # 惰性：初始不提取
+
+        calls = {"n": 0}
+
+        def fake_extract():
+            calls["n"] += 1
+            pool._proxies = [{"http": "http://1.1.1.1:80", "https": "http://1.1.1.1:80"}]
+            pool._proxy_acquired_at = __import__("time").time()
+            pool._extractions += 1
+
+        monkeypatch.setattr(pool, "_extract_once", fake_extract)
+        p = pool.proxy_for("https://push2.eastmoney.com/x")
+        assert p["http"] == "http://1.1.1.1:80"
+        assert calls["n"] == 1
+        # TTL 内复用，不再提取
+        pool.proxy_for("https://push2.eastmoney.com/x")
+        assert calls["n"] == 1
+
+    def test_ttl_expiry_reextracts(self, monkeypatch):
+        pool = _extract_api_pool(monkeypatch)
+        pool._proxies = [{"http": "http://old:80", "https": "http://old:80"}]
+        pool._proxy_acquired_at = 0.0  # 很久以前 → 已过期
+        calls = {"n": 0}
+
+        def fake_extract():
+            calls["n"] += 1
+            pool._proxies = [{"http": "http://new:80", "https": "http://new:80"}]
+            pool._proxy_acquired_at = __import__("time").time()
+
+        monkeypatch.setattr(pool, "_extract_once", fake_extract)
+        p = pool.proxy_for("https://push2.eastmoney.com/x")
+        assert p["http"] == "http://new:80"
+        assert calls["n"] == 1
+
+    def test_failure_removes_and_next_request_extracts(self, monkeypatch):
+        import time as _t
+
+        pool = _extract_api_pool(monkeypatch)
+        pool._proxies = [{"http": "http://dead:80", "https": "http://dead:80"}]
+        pool._proxy_acquired_at = _t.time()
+
+        # 上报失效 → 摘除
+        pool.report_proxy_failure({"http": "http://dead:80", "https": "http://dead:80"})
+        assert pool._proxies == []
+
+        def fake_extract():
+            pool._proxies = [{"http": "http://alive:80", "https": "http://alive:80"}]
+            pool._proxy_acquired_at = _t.time()
+
+        monkeypatch.setattr(pool, "_extract_once", fake_extract)
+        p = pool.proxy_for("https://push2.eastmoney.com/x")
+        assert p["http"] == "http://alive:80"
+
+    def test_non_em_domain_does_not_extract(self, monkeypatch):
+        pool = _extract_api_pool(monkeypatch)
+        def boom():
+            raise AssertionError("非白名单域名不应触发提取")
+        monkeypatch.setattr(pool, "_extract_once", boom)
+        assert pool.proxy_for("https://hq.sinajs.cn/x") is None
+        assert pool._proxies == []

@@ -23,7 +23,28 @@
 
 ## 使用示例
 
-### 隧道代理（推荐）
+### 动态按量 IP（自动提取，最省，推荐）
+
+巨量等厂商的「动态代理-按量付费」按提取的 IP 数计费。配置提取链接后，
+IP 池在**列表为空 / IP 到期 / 传输失败**时自动提取新 IP，一个 IP 时效内复用全部请求——
+跑一次指标包通常只消耗 **1 个 IP**。
+
+```bash
+# bash/mac
+export DATASOURCE_PROXY_API='https://v2.api.xxx.com/dynamic/getips?...&result_type=text&split=1'
+export DATASOURCE_PROXY_API_TTL=165   # IP 时效秒数（3 分钟档配 165，留 15s 提前量；1 分钟档用默认 55）
+```
+
+```powershell
+# PowerShell
+$env:DATASOURCE_PROXY_API='https://v2.api.xxx.com/dynamic/getips?...&result_type=text&split=1'
+$env:DATASOURCE_PROXY_API_TTL='165'
+```
+
+提取响应兼容纯文本（每行一个 `ip:port`）与 JSON（含 `proxy_list` / `ip`+`port`）。
+**无需手动维护 IP 池、无需手动续费**；传输层失败会自动摘除坏 IP 并在下次请求重新提取。
+
+### 隧道代理（次选）
 
 ```bash
 # Linux/macOS

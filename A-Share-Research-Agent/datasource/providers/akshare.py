@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import sys
 import threading
 import time
 from collections.abc import Callable
@@ -150,12 +151,23 @@ def _init_akshare_anti_scraping_patch() -> None:
 
         def patched_request(self, method, url, **kwargs):
             # 已显式传 proxies 的调用（如 _shared.http_client.em_get）不重复注入/节流
+            prox = None
             if "eastmoney.com" in url and not kwargs.get("proxies"):
                 _throttle_em()
                 prox = _em_proxies_for(url)
                 if prox:
                     kwargs["proxies"] = prox
-            return original_request(self, method, url, **kwargs)
+            try:
+                return original_request(self, method, url, **kwargs)
+            except Exception:
+                # 代理出口失效（连接层）→ 摘除，下次 akshare 请求自动提取新 IP
+                import requests as _requests
+
+                if prox and isinstance(sys.exc_info()[1], _requests.exceptions.RequestException):
+                    from datasource.resilience.ip_pool import report_proxy_failure
+
+                    report_proxy_failure(prox)
+                raise
 
         Session.request = patched_request
         Session._ashare_agent_proxy_patched = True
