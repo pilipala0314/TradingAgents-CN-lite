@@ -171,7 +171,11 @@ factors:
     method: get_northbound_flow
     caliber: akshare
     args: {}
-    note: 沪股通+深股通求和（provider 已按北向语义剔除南向通道）
+    # 【披露政策限制，2026 年 T-1 粒度结构性不可得】2024-08-19 起交易所取消北向资金
+    # 每日净买入额实时披露（仅保留季度持股）。当日汇总接口只返回当天盘中值（盘前=0），
+    # 历史接口 stock_hsgt_hist_em 净买额列近期全为 NaN → T-1 包恒为 empty（非故障）。
+    # 恢复路径：tushare moneyflow_hsgt（需 TUSHARE_TOKEN，历史北向数据可能仍可用）或改用季度持仓。
+    note: 沪股通+深股通求和（provider 已按北向语义剔除南向通道）；受 2024-08 披露政策限制
     extract_kind: sum
     field: 资金净流入
     match:
@@ -180,7 +184,7 @@ factors:
     method: get_northbound_flow
     caliber: tushare
     args: {}
-    note: ；需 TUSHARE_TOKEN
+    note: 需 TUSHARE_TOKEN；历史北向净买额可能仍可取，待配 token 验证
 
   # ════════════════════════════════════════════════════════════════
   # 情绪面（sentiment）— 收盘后即可
